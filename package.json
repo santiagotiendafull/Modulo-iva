@@ -1,0 +1,17 @@
+{
+  "name": "modulo-iva",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Módulo de seguimiento de IVA - Tienda Full (NT y Target)",
+  "scripts": {
+    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "import:historico": "npm run import:historico --prefix backend",
+    "import:mes-en-curso": "npm run import:mes-en-curso --prefix backend",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev": "concurrently -n API,WEB -c blue,green \"npm:dev:backend\" \"npm:dev:frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

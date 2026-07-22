@@ -1,0 +1,25 @@
+# dependencias
+node_modules/
+
+# base de datos local (SQLite) y datos reales de la empresa — nunca al repo
+backend/data/
+data/
+
+# archivos sueltos con datos reales que quedaron de pruebas
+emitidos_julio_b64.txt
+*_b64.txt
+
+# builds
+dist/
+dist-ssr/
+
+# variables de entorno / secretos
+.env
+.env.*
+
+# editor / SO
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.log

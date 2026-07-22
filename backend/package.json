@@ -1,0 +1,20 @@
+{
+  "name": "modulo-iva-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "import:historico": "node scripts/import-historico.js",
+    "import:mes-en-curso": "node scripts/import-mes-en-curso.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.19.2",
+    "multer": "^2.0.0",
+    "pdf-parse": "^1.1.1",
+    "pdfkit": "^0.19.1"
+  }
+}
