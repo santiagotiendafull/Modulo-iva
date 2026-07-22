@@ -10,6 +10,7 @@ import CargarDatos from './components/CargarDatos';
 import Proveedores from './components/Proveedores';
 import Conciliacion from './components/Conciliacion';
 import Login, { estaAutenticado } from './components/Login';
+import { ResumenSkeleton, VentasComprasSkeleton, EvolucionSkeleton } from './components/DashboardSkeleton';
 import './App.css';
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
   const [cargandoPeriodos, setCargandoPeriodos] = useState(true);
   const [resumen, setResumen] = useState(null);
   const [ventasCompras, setVentasCompras] = useState(null);
+  const [cargandoResumen, setCargandoResumen] = useState(true);
   const [evoluciones, setEvoluciones] = useState({});
   const [error, setError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -65,15 +67,19 @@ export default function App() {
   }, [razonSocial]);
 
   useEffect(() => {
-    if (!periodo) { setResumen(null); setVentasCompras(null); return; }
+    if (!periodo) { setResumen(null); setVentasCompras(null); setCargandoResumen(false); return; }
     let cancelado = false;
     setError(null);
-    api.resumen(razonSocial, periodo).then((r) => !cancelado && setResumen(r)).catch((e) => !cancelado && setError(e.message));
+    setCargandoResumen(true);
+    const pedidos = [api.resumen(razonSocial, periodo).then((r) => !cancelado && setResumen(r))];
     if (razonSocial !== 'Consolidado') {
-      api.ventasCompras(razonSocial, periodo).then((v) => !cancelado && setVentasCompras(v)).catch(() => !cancelado && setVentasCompras(null));
+      pedidos.push(api.ventasCompras(razonSocial, periodo).then((v) => !cancelado && setVentasCompras(v)).catch(() => !cancelado && setVentasCompras(null)));
     } else {
       setVentasCompras(null);
     }
+    Promise.all(pedidos)
+      .catch((e) => !cancelado && setError(e.message))
+      .finally(() => !cancelado && setCargandoResumen(false));
     return () => { cancelado = true; };
   }, [razonSocial, periodo, refreshKey]);
 
@@ -138,14 +144,12 @@ export default function App() {
             <Selector
               razonSocial={razonSocial}
               setRazonSocial={setRazonSocial}
-              periodo={razonSocial !== 'Consolidado' ? resumen?.periodo : null}
+              periodo={razonSocial !== 'Consolidado' ? periodo : null}
               periodos={periodos}
               onCambiarPeriodo={irAPeriodo}
             />
 
             {error && <p className="error-banner">{error}</p>}
-
-            {cargandoPeriodos && !error && <p className="empty-state">Cargando…</p>}
 
             {!cargandoPeriodos && !periodo && !error && (
               <p className="empty-state">
@@ -155,7 +159,9 @@ export default function App() {
 
             {razonSocial === 'Consolidado' ? (
               <TablaComparativa />
-            ) : (
+            ) : periodo && (cargandoPeriodos || cargandoResumen || !evoluciones[razonSocial]) ? (
+              <ResumenSkeleton />
+            ) : periodo ? (
               <>
                 <ResumenCards resumen={resumen} />
                 <ResultadoFiscalMensual
@@ -166,10 +172,11 @@ export default function App() {
                   onDeseleccionar={deseleccionarPeriodo}
                 />
               </>
-            )}
-            <VentasCompras resumen={resumen} ventasCompras={ventasCompras} />
+            ) : null}
 
-            {Object.keys(evoluciones).length > 0 && <EvolucionChart evoluciones={evoluciones} />}
+            {periodo && cargandoResumen ? <VentasComprasSkeleton /> : <VentasCompras resumen={resumen} ventasCompras={ventasCompras} />}
+
+            {Object.keys(evoluciones).length === 0 ? <EvolucionSkeleton /> : <EvolucionChart evoluciones={evoluciones} />}
           </>
         )}
       </main>

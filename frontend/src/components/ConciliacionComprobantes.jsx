@@ -4,7 +4,7 @@ import { money, fechaLabel } from '../format';
 
 function EstadoPill({ estado }) {
   if (estado === 'ok') return <span className="estado-pill estado-pill-ok">En ambos</span>;
-  if (estado === 'falta_interno') return <span className="estado-pill estado-pill-falta">Falta en sistema interno</span>;
+  if (estado === 'falta_interno') return <span className="estado-pill estado-pill-falta">Falta en sistema</span>;
   return <span className="estado-pill estado-pill-info">Falta en ARCA</span>;
 }
 
@@ -63,12 +63,12 @@ export default function ConciliacionComprobantes({ razonSocial }) {
           <div className="conciliacion-resumen">
             <div className="conciliacion-resumen-item"><span>{datos.resumen.total}</span>Comprobantes en total</div>
             <div className="conciliacion-resumen-item conciliacion-resumen-ok"><span>{datos.resumen.ok}</span>En ambos sistemas</div>
-            <div className="conciliacion-resumen-item conciliacion-resumen-falta"><span>{datos.resumen.falta_interno}</span>Faltan en el interno</div>
+            <div className="conciliacion-resumen-item conciliacion-resumen-falta"><span>{datos.resumen.falta_interno}</span>Faltan en Sistema</div>
             <div className="conciliacion-resumen-item conciliacion-resumen-info"><span>{datos.resumen.falta_arca}</span>Faltan en ARCA</div>
           </div>
 
           <div className="tabla-scroll">
-            <table>
+            <table className="tabla-conciliacion-comprobantes">
               <thead>
                 <tr>
                   <th>Fecha</th>
@@ -85,11 +85,11 @@ export default function ConciliacionComprobantes({ razonSocial }) {
                 {filasMostradas.map((f, i) => (
                   <tr key={i} className={f.estado !== 'ok' ? 'fila-conciliacion-faltante' : ''}>
                     <td>{fechaLabel(f.fecha)}</td>
-                    <td className="col-concepto">{f.tipo_comprobante}</td>
+                    <td className="col-concepto" title={f.tipo_comprobante}>{f.tipo_comprobante}</td>
                     <td>{f.pdv}</td>
                     <td>{f.numero}</td>
                     <td>{f.cuit_contraparte}</td>
-                    <td className="col-concepto">{f.denominacion_contraparte || '—'}</td>
+                    <td className="col-concepto" title={f.denominacion_contraparte || ''}>{f.denominacion_contraparte || '—'}</td>
                     <td>{money(f.total)}</td>
                     <td><EstadoPill estado={f.estado} /></td>
                   </tr>

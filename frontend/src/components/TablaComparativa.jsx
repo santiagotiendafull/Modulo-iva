@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { money } from '../format';
 import SelectorPeriodo from './SelectorPeriodo';
+import TablaComparativaSkeleton from './TablaComparativaSkeleton';
 
 function fila(label, target, nt, total, resaltar) {
   return (
@@ -26,6 +27,7 @@ export default function TablaComparativa() {
   const [periodo, setPeriodo] = useState(null);
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
+  const [cargandoPeriodos, setCargandoPeriodos] = useState(true);
 
   useEffect(() => {
     let cancelado = false;
@@ -35,7 +37,8 @@ export default function TablaComparativa() {
         setPeriodos(p);
         setPeriodo((actual) => (actual && p.includes(actual) ? actual : p.at(-1) ?? null));
       })
-      .catch((e) => !cancelado && setError(e.message));
+      .catch((e) => !cancelado && setError(e.message))
+      .finally(() => !cancelado && setCargandoPeriodos(false));
     return () => { cancelado = true; };
   }, []);
 
@@ -46,9 +49,9 @@ export default function TablaComparativa() {
     return () => { cancelado = true; };
   }, [periodo]);
 
-  if (periodos.length === 0) return null;
   if (error) return <p className="error-banner">{error}</p>;
-  if (!datos) return null;
+  if (cargandoPeriodos || (periodo && !datos)) return <TablaComparativaSkeleton />;
+  if (periodos.length === 0) return null;
 
   const nt = datos.razones.NT;
   const target = datos.razones.Target;

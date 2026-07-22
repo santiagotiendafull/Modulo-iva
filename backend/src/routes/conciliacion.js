@@ -95,7 +95,7 @@ router.get('/faltantes.pdf', async (req, res) => {
     doc.fontSize(9).fillColor('#000');
     let x = 40;
     for (const c of cols) {
-      doc.font('Helvetica-Bold').text(c.label, x, y, { width: c.width });
+      doc.font('Helvetica-Bold').text(c.label, x, y, { width: c.width, height: 14, ellipsis: true, lineBreak: false });
       x += c.width;
     }
     doc.moveTo(40, y + 14).lineTo(x, y + 14).strokeColor('#ccc').stroke();
@@ -122,7 +122,7 @@ router.get('/faltantes.pdf', async (req, res) => {
       total: money(f.total),
     };
     for (const c of cols) {
-      doc.text(String(valores[c.key] ?? ''), x, y, { width: c.width });
+      doc.text(String(valores[c.key] ?? ''), x, y, { width: c.width, height: 14, ellipsis: true, lineBreak: false });
       x += c.width;
     }
     y += 16;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
-import { money, periodoLabel, periodoLabelCompleto, esCierreDeMes } from '../format';
+import { money, periodoLabel, esCierreDeMes } from '../format';
+import SelectorPeriodo from './SelectorPeriodo';
 
 const TOLERANCIA = 1; // redondeos de centavos entre metodologías no cuentan como diferencia real
 
@@ -23,23 +24,24 @@ function EstadoPill({ estado }) {
   return <span className={`estado-pill estado-pill-${estado.tipo}`}>{estado.texto}</span>;
 }
 
-function CardComparacion({ label, valor }) {
+function CardComparacion({ label, sublabel, valor }) {
   return (
     <div className="card">
       <div className="card-label">{label}</div>
+      {sublabel && <div className="card-sublabel">{sublabel}</div>}
       <div className="card-value">{valor != null ? money(valor) : '—'}</div>
     </div>
   );
 }
 
-function GrupoComparacion({ titulo, interno, externo, diferencia, credito931 }) {
+function GrupoComparacion({ titulo, subtituloInterno, subtituloExterno, interno, externo, diferencia, credito931 }) {
   const hayDiferencia = diferencia != null && Math.abs(diferencia) >= TOLERANCIA;
   return (
     <div className="grupo-comparacion">
-      <h4>{titulo}</h4>
+      <h4 className="grupo-comparacion-titulo">{titulo}</h4>
       <div className="grupo-comparacion-cards">
-        <CardComparacion label="Interno (nuestro cálculo)" valor={interno} />
-        <CardComparacion label="Externo (DDJJ)" valor={externo} />
+        <CardComparacion label="Interno" sublabel={subtituloInterno} valor={interno} />
+        <CardComparacion label="Externo" sublabel={subtituloExterno} valor={externo} />
         <div className="card">
           <div className="card-label">Diferencia</div>
           <div className={`card-value ${diferencia == null ? '' : hayDiferencia ? 'neg' : 'pos'}`}>
@@ -81,9 +83,6 @@ export default function ConciliacionInternaExterna({ razonSocial }) {
 
   const filas = [...(datos?.filas ?? [])].sort((a, b) => a.periodo.localeCompare(b.periodo));
   const filaSeleccionada = filas.find((f) => f.periodo === periodoSeleccionado) ?? null;
-  const indice = filas.findIndex((f) => f.periodo === periodoSeleccionado);
-  const hayAnterior = indice > 0;
-  const haySiguiente = indice !== -1 && indice < filas.length - 1;
 
   return (
     <div className="interna-externa">
@@ -102,37 +101,27 @@ export default function ConciliacionInternaExterna({ razonSocial }) {
       {!cargando && filas.length > 0 && filaSeleccionada && (
         <>
           <div className="interna-externa-resumen">
-            <div className="selector-periodo-nav interna-externa-nav">
-              <button
-                type="button"
-                className="selector-periodo-flecha"
-                onClick={() => setPeriodoSeleccionado(filas[indice - 1].periodo)}
-                disabled={!hayAnterior}
-                aria-label="Mes anterior"
-              >
-                ‹
-              </button>
-              <div className="selector-periodo">{periodoLabelCompleto(filaSeleccionada.periodo)}</div>
-              <button
-                type="button"
-                className="selector-periodo-flecha"
-                onClick={() => setPeriodoSeleccionado(filas[indice + 1].periodo)}
-                disabled={!haySiguiente}
-                aria-label="Mes siguiente"
-              >
-                ›
-              </button>
+            <div className="interna-externa-nav">
+              <SelectorPeriodo
+                periodo={filaSeleccionada.periodo}
+                periodos={filas.map((f) => f.periodo)}
+                onCambiarPeriodo={setPeriodoSeleccionado}
+              />
               <EstadoPill estado={estadoFila(filaSeleccionada)} />
             </div>
 
             <GrupoComparacion
               titulo="IVA Ventas"
+              subtituloInterno="de Mis Comprobantes ARCA"
+              subtituloExterno="DDJJ presentada por estudio"
               interno={filaSeleccionada.interno?.iva_ventas}
               externo={filaSeleccionada.externo?.iva_ventas}
               diferencia={filaSeleccionada.diferencia_ventas}
             />
             <GrupoComparacion
               titulo="IVA Compras"
+              subtituloInterno="de Mis Comprobantes ARCA"
+              subtituloExterno="DDJJ presentada por estudio"
               interno={filaSeleccionada.interno?.iva_compras}
               externo={filaSeleccionada.externo?.iva_compras}
               diferencia={filaSeleccionada.diferencia_compras}
@@ -140,6 +129,8 @@ export default function ConciliacionInternaExterna({ razonSocial }) {
             />
             <GrupoComparacion
               titulo="Diferencia (Ventas − Compras)"
+              subtituloInterno="Ventas − Compras"
+              subtituloExterno="Según DDJJ"
               interno={filaSeleccionada.interno?.diferencia}
               externo={filaSeleccionada.externo?.diferencia}
               diferencia={filaSeleccionada.diferencia_total}

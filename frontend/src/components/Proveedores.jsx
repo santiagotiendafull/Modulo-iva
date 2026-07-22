@@ -34,6 +34,14 @@ function FilaProveedor({ proveedor, onCambiarEstado, guardando }) {
   );
 }
 
+function normalizar(texto) {
+  return (texto || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase();
+}
+
 export default function Proveedores({ onCambio }) {
   const [razonSocial, setRazonSocial] = useState('Target');
   const [proveedores, setProveedores] = useState([]);
@@ -42,6 +50,7 @@ export default function Proveedores({ onCambio }) {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [guardandoCuit, setGuardandoCuit] = useState(null);
+  const [busqueda, setBusqueda] = useState('');
 
   const cargar = useCallback(async () => {
     setError(null);
@@ -74,7 +83,10 @@ export default function Proveedores({ onCambio }) {
 
   if (cargando) return <p className="empty-state">Cargando proveedores…</p>;
 
-  const proveedoresFiltrados = proveedores.filter((p) => p.razonesSociales.includes(razonSocial));
+  const busquedaNormalizada = normalizar(busqueda.trim());
+  const proveedoresFiltrados = proveedores
+    .filter((p) => p.razonesSociales.includes(razonSocial))
+    .filter((p) => !busquedaNormalizada || normalizar(p.denominacion).includes(busquedaNormalizada) || p.cuit.includes(busquedaNormalizada));
   const excluidasFiltradas = excluidas?.filas.filter((f) => f.razon_social === razonSocial) ?? [];
   const totalesFiltrados = excluidasFiltradas.reduce(
     (acc, f) => ({ neto_gravado: acc.neto_gravado + f.neto_gravado, iva: acc.iva + f.iva }),
@@ -94,16 +106,25 @@ export default function Proveedores({ onCambio }) {
       {hayNuevos && <div className="aviso-nuevos-proveedores">Existen nuevos proveedores sin clasificar</div>}
       {error && <p className="error-banner">{error}</p>}
 
-      <div className="razon-tabs">
-        {RAZONES.map((r) => (
-          <button
-            key={r}
-            className={`razon-tab ${razonSocial === r ? 'active' : ''}`}
-            onClick={() => setRazonSocial(r)}
-          >
-            {r}
-          </button>
-        ))}
+      <div className="proveedores-controles">
+        <div className="razon-tabs">
+          {RAZONES.map((r) => (
+            <button
+              key={r}
+              className={`razon-tab ${razonSocial === r ? 'active' : ''}`}
+              onClick={() => setRazonSocial(r)}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          className="buscador-proveedores"
+          placeholder="Buscar por nombre o CUIT…"
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+        />
       </div>
 
       <div className="tabla-comparativa">
@@ -126,7 +147,9 @@ export default function Proveedores({ onCambio }) {
                 />
               ))}
               {proveedoresFiltrados.length === 0 && (
-                <tr><td colSpan={3} className="bloque-nota">Todavía no hay compras cargadas para {razonSocial}.</td></tr>
+                <tr><td colSpan={3} className="bloque-nota">
+                  {busquedaNormalizada ? 'Ningún proveedor coincide con la búsqueda.' : `Todavía no hay compras cargadas para ${razonSocial}.`}
+                </td></tr>
               )}
             </tbody>
           </table>
