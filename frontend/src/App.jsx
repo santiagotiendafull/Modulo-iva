@@ -9,14 +9,18 @@ import ResultadoFiscalMensual from './components/ResultadoFiscalMensual';
 import CargarDatos from './components/CargarDatos';
 import Proveedores from './components/Proveedores';
 import Conciliacion from './components/Conciliacion';
+import Login, { estaAutenticado } from './components/Login';
 import './App.css';
 
 export default function App() {
+  const [autenticado, setAutenticado] = useState(estaAutenticado());
   const [vista, setVista] = useState('dashboard');
   const [vistaElegidaPorUsuario, setVistaElegidaPorUsuario] = useState(false);
   const [razonSocial, setRazonSocial] = useState('Target');
   const [periodo, setPeriodo] = useState(null);
+  const [periodoSeleccionado, setPeriodoSeleccionado] = useState(null);
   const [periodos, setPeriodos] = useState([]);
+  const [cargandoPeriodos, setCargandoPeriodos] = useState(true);
   const [resumen, setResumen] = useState(null);
   const [ventasCompras, setVentasCompras] = useState(null);
   const [evoluciones, setEvoluciones] = useState({});
@@ -47,13 +51,16 @@ export default function App() {
 
   useEffect(() => {
     let cancelado = false;
+    setCargandoPeriodos(true);
     api.periodos(razonSocial)
       .then(({ periodos: p }) => {
         if (cancelado) return;
         setPeriodos(p);
         setPeriodo(p.at(-1) ?? null);
+        setPeriodoSeleccionado(null);
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => !cancelado && setError(e.message))
+      .finally(() => !cancelado && setCargandoPeriodos(false));
     return () => { cancelado = true; };
   }, [razonSocial]);
 
@@ -75,17 +82,31 @@ export default function App() {
     setVista(nuevaVista);
   }
 
+  function irAPeriodo(p) {
+    setPeriodo(p);
+    setPeriodoSeleccionado(p);
+  }
+
+  function deseleccionarPeriodo() {
+    setPeriodoSeleccionado(null);
+    setPeriodo(periodos.at(-1) ?? null);
+  }
+
+  if (!autenticado) {
+    return <Login onIngresar={() => setAutenticado(true)} />;
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <div className="app-header-inner">
-          <div className="app-header-marca">
+          <button type="button" className="app-header-marca app-header-marca-btn" onClick={() => irA('dashboard')}>
             <img src="/logo-tiendafull.svg" alt="Tienda Full" className="app-logo" />
             <div className="app-header-titulo">
               <h1>Módulo IVA al día</h1>
               <p className="subtitle">Tienda Full — Target y NT</p>
             </div>
-          </div>
+          </button>
           <div className="app-header-nav-group">
             <nav className="app-nav">
               <button className={`nav-tab ${vista === 'dashboard' ? 'active' : ''}`} onClick={() => irA('dashboard')}>
@@ -119,12 +140,14 @@ export default function App() {
               setRazonSocial={setRazonSocial}
               periodo={razonSocial !== 'Consolidado' ? resumen?.periodo : null}
               periodos={periodos}
-              onCambiarPeriodo={setPeriodo}
+              onCambiarPeriodo={irAPeriodo}
             />
 
             {error && <p className="error-banner">{error}</p>}
 
-            {!periodo && !error && (
+            {cargandoPeriodos && !error && <p className="empty-state">Cargando…</p>}
+
+            {!cargandoPeriodos && !periodo && !error && (
               <p className="empty-state">
                 No hay períodos cargados todavía para {razonSocial}. Andá a "Cargar datos" para empezar.
               </p>
@@ -138,8 +161,9 @@ export default function App() {
                 <ResultadoFiscalMensual
                   razonSocial={razonSocial}
                   meses={evoluciones[razonSocial]}
-                  periodoSeleccionado={periodo}
-                  onSeleccionarPeriodo={setPeriodo}
+                  periodoSeleccionado={periodoSeleccionado}
+                  onSeleccionarPeriodo={irAPeriodo}
+                  onDeseleccionar={deseleccionarPeriodo}
                 />
               </>
             )}

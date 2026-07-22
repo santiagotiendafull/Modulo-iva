@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { money, periodoLabel, esCierreDeMes } from '../format';
 
 function origenInfo(m) {
@@ -6,12 +7,25 @@ function origenInfo(m) {
   return { texto: 'Mes en curso', clase: 'actual' };
 }
 
-export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSeleccionado, onSeleccionarPeriodo }) {
+export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSeleccionado, onSeleccionarPeriodo, onDeseleccionar }) {
+  const cajaRef = useRef(null);
+
+  useEffect(() => {
+    if (!periodoSeleccionado) return;
+    function alTocarFuera(e) {
+      if (cajaRef.current && !cajaRef.current.contains(e.target)) {
+        onDeseleccionar?.();
+      }
+    }
+    document.addEventListener('mousedown', alTocarFuera);
+    return () => document.removeEventListener('mousedown', alTocarFuera);
+  }, [periodoSeleccionado, onDeseleccionar]);
+
   if (!meses || meses.length === 0) return null;
   const ordenados = [...meses].sort((a, b) => a.periodo.localeCompare(b.periodo));
 
   return (
-    <div className="resultado-fiscal">
+    <div className="resultado-fiscal" ref={cajaRef}>
       <h3>Resultado fiscal por mes — {razonSocial}</h3>
       <p className="resultado-fiscal-hint">Hacé clic en un mes para ver el detalle de comprobantes más abajo.</p>
       <div className="tabla-scroll">
