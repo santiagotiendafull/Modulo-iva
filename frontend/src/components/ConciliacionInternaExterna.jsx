@@ -42,7 +42,7 @@ function GrupoComparacion({ titulo, subtituloInterno, subtituloExterno, interno,
       <div className="grupo-comparacion-cards">
         <CardComparacion label="Interno" sublabel={subtituloInterno} valor={interno} />
         <CardComparacion label="Externo" sublabel={subtituloExterno} valor={externo} />
-        <div className="card">
+        <div className={`card card-diferencia ${diferencia == null ? '' : hayDiferencia ? 'card-diferencia-alerta' : 'card-diferencia-ok'}`}>
           <div className="card-label">Diferencia</div>
           <div className={`card-value ${diferencia == null ? '' : hayDiferencia ? 'neg' : 'pos'}`}>
             {diferencia != null ? money(diferencia) : '—'}

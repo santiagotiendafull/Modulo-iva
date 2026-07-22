@@ -5,7 +5,7 @@ import ConciliacionInternaExterna from './ConciliacionInternaExterna';
 const RAZONES = ['Target', 'NT'];
 
 export default function Conciliacion() {
-  const [subVista, setSubVista] = useState('comprobantes');
+  const [subVista, setSubVista] = useState('interna-externa');
   const [razonSocial, setRazonSocial] = useState('Target');
 
   return (
@@ -13,16 +13,16 @@ export default function Conciliacion() {
       <div className="conciliacion-subnav">
         <div className="pill-tabs">
           <button
-            className={`pill-tab ${subVista === 'comprobantes' ? 'active' : ''}`}
-            onClick={() => setSubVista('comprobantes')}
-          >
-            Comprobantes
-          </button>
-          <button
             className={`pill-tab ${subVista === 'interna-externa' ? 'active' : ''}`}
             onClick={() => setSubVista('interna-externa')}
           >
             Interna vs Externa
+          </button>
+          <button
+            className={`pill-tab ${subVista === 'comprobantes' ? 'active' : ''}`}
+            onClick={() => setSubVista('comprobantes')}
+          >
+            Comprobantes
           </button>
         </div>
         <div className="razon-tabs">

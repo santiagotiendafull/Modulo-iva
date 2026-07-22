@@ -96,9 +96,6 @@ function Bloque({ titulo, totalIva, detalle, esCompras, razonSocial, periodo, cr
               Incluye {money(credito931)} de crédito fiscal por Formulario 931 (Suma de Rem. 10 × porcentaje configurado).
             </p>
           )}
-          <p className="bloque-categoria-nota">
-            Desglose habitual / accesoria: pendiente de mapeo por proveedor/cliente (próxima iteración).
-          </p>
           {porTipo.size > 0 && (
             <ul className="bloque-tipos">
               {[...porTipo.entries()].map(([tipo, info]) => {
