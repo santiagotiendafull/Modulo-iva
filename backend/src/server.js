@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import './db.js'; // inicializa la base y el schema
+import { initDb } from './db.js';
 import posicionesRouter from './routes/posiciones.js';
 import importarRouter from './routes/importar.js';
 import proveedoresRouter from './routes/proveedores.js';
@@ -20,4 +20,7 @@ app.use('/api/configuracion', configuracionRouter);
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 const PORT = process.env.PORT || 4310;
+
+// La base (Turso o archivo local, ver db.js) hay que prepararla antes de aceptar pedidos.
+await initDb();
 app.listen(PORT, () => console.log(`Módulo IVA backend escuchando en http://localhost:${PORT}`));

@@ -36,38 +36,38 @@ router.post('/interna', upload.single('archivo'), async (req, res) => {
   }
 });
 
-router.get('/comprobantes', (req, res) => {
+router.get('/comprobantes', async (req, res) => {
   const { razon_social: razonSocial } = req.query;
   if (!['NT', 'Target'].includes(razonSocial)) {
     return res.status(400).json({ error: 'falta razon_social (NT o Target)' });
   }
-  res.json(obtenerConciliacion(razonSocial));
+  res.json(await obtenerConciliacion(razonSocial));
 });
 
-router.get('/interna-externa', (req, res) => {
+router.get('/interna-externa', async (req, res) => {
   const { razon_social: razonSocial } = req.query;
   if (!['NT', 'Target'].includes(razonSocial)) {
     return res.status(400).json({ error: 'falta razon_social (NT o Target)' });
   }
-  res.json(conciliacionInternaExterna(razonSocial));
+  res.json(await conciliacionInternaExterna(razonSocial));
 });
 
-router.delete('/interna', (req, res) => {
+router.delete('/interna', async (req, res) => {
   const { razon_social: razonSocial } = req.query;
   if (!['NT', 'Target'].includes(razonSocial)) {
     return res.status(400).json({ error: 'falta razon_social (NT o Target)' });
   }
-  limpiarInterna(razonSocial);
+  await limpiarInterna(razonSocial);
   res.json({ ok: true });
 });
 
-router.get('/faltantes.pdf', (req, res) => {
+router.get('/faltantes.pdf', async (req, res) => {
   const { razon_social: razonSocial } = req.query;
   if (!['NT', 'Target'].includes(razonSocial)) {
     return res.status(400).json({ error: 'falta razon_social (NT o Target)' });
   }
 
-  const faltantes = comprobantesFaltantesEnInterna(razonSocial);
+  const faltantes = await comprobantesFaltantesEnInterna(razonSocial);
 
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="comprobantes-faltantes-${razonSocial}.pdf"`);

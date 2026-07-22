@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import pdfParse from 'pdf-parse';
-import { db } from '../db.js';
+import { get, run } from '../db.js';
 import { CUIT_A_RAZON_SOCIAL } from './mesEnCursoService.js';
 
 function parseNumber(str) {
@@ -88,30 +88,9 @@ export function parsePdfText(text, archivoOrigen) {
   };
 }
 
-const upsertStmt = db.prepare(`
-  INSERT INTO posiciones_historicas
-    (razon_social, periodo, iva_ventas, iva_compras, diferencia, saldo_tecnico_anterior,
-     saldo_tecnico, retenciones_percepciones, saldo_libre_disponibilidad, fecha_presentacion, cuit, archivo_origen)
-  VALUES
-    (@razon_social, @periodo, @iva_ventas, @iva_compras, @diferencia, @saldo_tecnico_anterior,
-     @saldo_tecnico, @retenciones_percepciones, @saldo_libre_disponibilidad, @fecha_presentacion, @cuit, @archivo_origen)
-  ON CONFLICT (razon_social, periodo) DO UPDATE SET
-    iva_ventas = excluded.iva_ventas,
-    iva_compras = excluded.iva_compras,
-    diferencia = excluded.diferencia,
-    saldo_tecnico_anterior = excluded.saldo_tecnico_anterior,
-    saldo_tecnico = excluded.saldo_tecnico,
-    retenciones_percepciones = excluded.retenciones_percepciones,
-    saldo_libre_disponibilidad = excluded.saldo_libre_disponibilidad,
-    fecha_presentacion = excluded.fecha_presentacion,
-    cuit = excluded.cuit,
-    archivo_origen = excluded.archivo_origen
-`);
-
-const existeStmt = db.prepare('SELECT 1 FROM posiciones_historicas WHERE razon_social = ? AND periodo = ?');
-
-export function existeHistorico(razonSocial, periodo) {
-  return !!existeStmt.get(razonSocial, periodo);
+export async function existeHistorico(razonSocial, periodo) {
+  const row = await get('SELECT 1 FROM posiciones_historicas WHERE razon_social = ? AND periodo = ?', [razonSocial, periodo]);
+  return !!row;
 }
 
 // Parsea el PDF y devuelve los datos detectados sin escribir en la base — para poder avisar antes
@@ -123,7 +102,25 @@ export async function parseSoloPdfBuffer(buffer, archivoOrigen) {
 
 export async function importarPdfBuffer(buffer, archivoOrigen) {
   const row = await parseSoloPdfBuffer(buffer, archivoOrigen);
-  upsertStmt.run(row);
+  await run(`
+    INSERT INTO posiciones_historicas
+      (razon_social, periodo, iva_ventas, iva_compras, diferencia, saldo_tecnico_anterior,
+       saldo_tecnico, retenciones_percepciones, saldo_libre_disponibilidad, fecha_presentacion, cuit, archivo_origen)
+    VALUES
+      (@razon_social, @periodo, @iva_ventas, @iva_compras, @diferencia, @saldo_tecnico_anterior,
+       @saldo_tecnico, @retenciones_percepciones, @saldo_libre_disponibilidad, @fecha_presentacion, @cuit, @archivo_origen)
+    ON CONFLICT (razon_social, periodo) DO UPDATE SET
+      iva_ventas = excluded.iva_ventas,
+      iva_compras = excluded.iva_compras,
+      diferencia = excluded.diferencia,
+      saldo_tecnico_anterior = excluded.saldo_tecnico_anterior,
+      saldo_tecnico = excluded.saldo_tecnico,
+      retenciones_percepciones = excluded.retenciones_percepciones,
+      saldo_libre_disponibilidad = excluded.saldo_libre_disponibilidad,
+      fecha_presentacion = excluded.fecha_presentacion,
+      cuit = excluded.cuit,
+      archivo_origen = excluded.archivo_origen
+  `, row);
   return row;
 }
 

@@ -2,11 +2,13 @@
 // Se puede correr de nuevo cuando lleguen los PDFs de los próximos meses: hace upsert por (razon_social, periodo).
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { initDb } from '../src/db.js';
 import { importarTodosLosPdfs } from '../src/services/historicoService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SOURCE_DIR = path.join(__dirname, '..', '..', 'data', 'source', 'historico');
 
+await initDb();
 const resultados = await importarTodosLosPdfs(SOURCE_DIR);
 for (const row of resultados) {
   console.log(

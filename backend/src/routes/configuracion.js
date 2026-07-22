@@ -3,13 +3,13 @@ import { obtenerPorcentaje931, establecerPorcentaje931 } from '../services/confi
 
 const router = Router();
 
-router.get('/porcentaje-931', (req, res) => {
-  res.json({ porcentaje: obtenerPorcentaje931() });
+router.get('/porcentaje-931', async (req, res) => {
+  res.json({ porcentaje: await obtenerPorcentaje931() });
 });
 
-router.put('/porcentaje-931', (req, res) => {
+router.put('/porcentaje-931', async (req, res) => {
   try {
-    const porcentaje = establecerPorcentaje931(req.body.valor);
+    const porcentaje = await establecerPorcentaje931(req.body.valor);
     res.json({ porcentaje });
   } catch (err) {
     res.status(400).json({ error: err.message });

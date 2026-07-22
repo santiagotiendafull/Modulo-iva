@@ -99,7 +99,7 @@ router.post('/historico/preview', upload.single('archivo'), async (req, res) => 
     res.json({
       razon_social: row.razon_social,
       periodo: row.periodo,
-      ya_existe: existeHistorico(row.razon_social, row.periodo),
+      ya_existe: await existeHistorico(row.razon_social, row.periodo),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -131,7 +131,7 @@ router.post('/931/preview', upload.single('archivo'), async (req, res) => {
       razon_social: row.razon_social,
       periodo: row.periodo,
       suma_rem_10: row.suma_rem_10,
-      ya_existe: existeFormulario931(row.razon_social, row.periodo),
+      ya_existe: await existeFormulario931(row.razon_social, row.periodo),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -156,8 +156,8 @@ router.post('/931', upload.single('archivo'), async (req, res) => {
 
 // Historial de todo lo cargado (Recibidos/Emitidos/931/DDJJ por razón social y período), para
 // poder controlar de un vistazo qué falta antes de dar por cerrado un mes.
-router.get('/historial', (req, res) => {
-  res.json(historialCargas());
+router.get('/historial', async (req, res) => {
+  res.json(await historialCargas());
 });
 
 export default router;

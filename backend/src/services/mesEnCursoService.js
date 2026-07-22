@@ -4,6 +4,8 @@
 import fs from 'node:fs';
 import ExcelJS from 'exceljs';
 import { db } from '../db.js';
+// db acá es el cliente crudo de @libsql/client (no el helper get/all/run): se usa .batch() para
+// insertar todas las filas de un archivo en una sola transacción, en vez de un round-trip por fila.
 
 export const CUIT_A_RAZON_SOCIAL = {
   '20244058001': 'NT',
@@ -175,10 +177,7 @@ export function razonSocialDesdeTextoPlano(filePath) {
   return razonSocialDesdeTexto(inicio);
 }
 
-const deleteExisting = db.prepare(`
-  DELETE FROM comprobantes WHERE razon_social = ? AND tipo = ? AND archivo_origen = ?
-`);
-const insertRow = db.prepare(`
+const INSERT_COMPROBANTE_SQL = `
   INSERT INTO comprobantes
     (razon_social, tipo, periodo, fecha, tipo_comprobante, pdv, numero_desde, numero_hasta,
      cuit_contraparte, denominacion_contraparte, neto_gravado, neto_no_gravado, op_exentas,
@@ -189,7 +188,8 @@ const insertRow = db.prepare(`
      @cuit_contraparte, @denominacion_contraparte, @neto_gravado, @neto_no_gravado, @op_exentas,
      @otros_tributos, @iva, @total, @neto_gravado_105, @iva_105, @neto_gravado_21, @iva_21,
      @neto_gravado_27, @iva_27, @categoria, @archivo_origen)
-`);
+`;
+
 // fileNameOrBuffer: path (CLI) o Buffer (subida por HTTP) — leerFilas y razonSocialDesdeXlsx
 // aceptan ambos. nombreArchivo es siempre el nombre a mostrar/guardar como archivo_origen.
 // razonSocialManual: algunos exports de ARCA (la "consulta" en vez de "Mis Comprobantes") no traen
@@ -225,15 +225,11 @@ export async function importarArchivo({ fileNameOrBuffer, nombreArchivo, tipo, c
   const { razonSocial, filas } = await parseArchivo({ fileNameOrBuffer, nombreArchivo, tipo, cols, leerFilas, razonSocialManual });
   if (!razonSocial) return { razonSocial: null, filas: [] };
 
-  deleteExisting.run(razonSocial, cols.__tipo, nombreArchivo);
-  db.exec('BEGIN');
-  try {
-    for (const r of filas) insertRow.run(r);
-    db.exec('COMMIT');
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
+  await db.batch([
+    { sql: 'DELETE FROM comprobantes WHERE razon_social = ? AND tipo = ? AND archivo_origen = ?', args: [razonSocial, cols.__tipo, nombreArchivo] },
+    ...filas.map((r) => ({ sql: INSERT_COMPROBANTE_SQL, args: r })),
+  ], 'write');
+
   return { razonSocial, filas };
 }
 

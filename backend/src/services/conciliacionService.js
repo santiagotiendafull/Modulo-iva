@@ -2,7 +2,7 @@
 // Cargar Datos (tabla comprobantes) contra el Excel de compras del sistema de gestión interno, que
 // todavía no tiene un export propio así que se carga a mano con columnas fijas (ver CAMPOS_INTERNA).
 import ExcelJS from 'exceljs';
-import { db } from '../db.js';
+import { db, all, run } from '../db.js';
 import { signoComprobante } from './clasificacionComprobantes.js';
 import { cuitsNoCorresponde } from './proveedoresService.js';
 import { creditoFiscal931PorPeriodo } from './formulario931Service.js';
@@ -65,7 +65,7 @@ function mapearEncabezados(filaEncabezados) {
   return mapa;
 }
 
-const upsertInterna = db.prepare(`
+const UPSERT_INTERNA_SQL = `
   INSERT INTO conciliacion_interna
     (razon_social, fecha, tipo_comprobante, tipo_codigo, pdv, numero,
      cuit_contraparte, denominacion_contraparte, total, archivo_origen)
@@ -78,7 +78,7 @@ const upsertInterna = db.prepare(`
     denominacion_contraparte = excluded.denominacion_contraparte,
     total = excluded.total,
     archivo_origen = excluded.archivo_origen
-`);
+`;
 
 export async function importarInternaParaConciliacion(buffer, nombreArchivo, razonSocial) {
   const wb = new ExcelJS.Workbook();
@@ -93,57 +93,47 @@ export async function importarInternaParaConciliacion(buffer, nombreArchivo, raz
     throw new Error(`Al Excel le faltan columnas obligatorias: ${faltantes.join(', ')}.`);
   }
 
-  let cargados = 0;
+  const filas = [];
   let omitidos = 0;
 
-  db.exec('BEGIN');
-  try {
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return;
-      const valores = row.values.slice(1);
-      const val = (campo) => (mapa[campo] === undefined ? null : valores[mapa[campo]]);
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const valores = row.values.slice(1);
+    const val = (campo) => (mapa[campo] === undefined ? null : valores[mapa[campo]]);
 
-      const cuit = normalizarCuit(val('cuit'));
-      const pdv = normalizarNumero(val('pdv'));
-      const numero = normalizarNumero(val('numero'));
-      if (!cuit || !pdv || !numero) { if (row.hasValues) omitidos++; return; }
+    const cuit = normalizarCuit(val('cuit'));
+    const pdv = normalizarNumero(val('pdv'));
+    const numero = normalizarNumero(val('numero'));
+    if (!cuit || !pdv || !numero) { if (row.hasValues) omitidos++; return; }
 
-      const fechaRaw = val('fecha');
-      let fecha = null;
-      if (fechaRaw instanceof Date) {
-        fecha = `${fechaRaw.getFullYear()}-${String(fechaRaw.getMonth() + 1).padStart(2, '0')}-${String(fechaRaw.getDate()).padStart(2, '0')}`;
-      } else if (fechaRaw) {
-        fecha = fechaAIso(String(fechaRaw).trim()) || String(fechaRaw).trim();
-      }
+    const fechaRaw = val('fecha');
+    let fecha = null;
+    if (fechaRaw instanceof Date) {
+      fecha = `${fechaRaw.getFullYear()}-${String(fechaRaw.getMonth() + 1).padStart(2, '0')}-${String(fechaRaw.getDate()).padStart(2, '0')}`;
+    } else if (fechaRaw) {
+      fecha = fechaAIso(String(fechaRaw).trim()) || String(fechaRaw).trim();
+    }
 
-      upsertInterna.run({
-        razon_social: razonSocial,
-        fecha,
-        tipo_comprobante: val('tipo') != null ? String(val('tipo')) : null,
-        tipo_codigo: normalizarTipoCodigo(val('tipo')),
-        pdv,
-        numero,
-        cuit_contraparte: cuit,
-        denominacion_contraparte: val('denominacion') != null ? String(val('denominacion')) : null,
-        total: val('total') ? parseFloat(val('total')) : 0,
-        archivo_origen: nombreArchivo,
-      });
-      cargados++;
+    filas.push({
+      razon_social: razonSocial,
+      fecha,
+      tipo_comprobante: val('tipo') != null ? String(val('tipo')) : null,
+      tipo_codigo: normalizarTipoCodigo(val('tipo')),
+      pdv,
+      numero,
+      cuit_contraparte: cuit,
+      denominacion_contraparte: val('denominacion') != null ? String(val('denominacion')) : null,
+      total: val('total') ? parseFloat(val('total')) : 0,
+      archivo_origen: nombreArchivo,
     });
-    db.exec('COMMIT');
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
+  });
+
+  if (filas.length > 0) {
+    await db.batch(filas.map((r) => ({ sql: UPSERT_INTERNA_SQL, args: r })), 'write');
   }
 
-  return { comprobantes: cargados, omitidos };
+  return { comprobantes: filas.length, omitidos };
 }
-
-// La conciliación de comprobantes es contra las compras del sistema interno: se compara contra las
-// mismas compras cargadas en "Mis Comprobantes (Emitidos - Recibidos)" de Cargar Datos (tabla
-// comprobantes), sin necesidad de subirlas de nuevo acá.
-const selectComprasCargadas = db.prepare("SELECT fecha, periodo, tipo_comprobante, pdv, numero_desde, cuit_contraparte, denominacion_contraparte, total FROM comprobantes WHERE razon_social = ? AND tipo = 'compra' ORDER BY fecha, numero_desde");
-const selectInterna = db.prepare('SELECT * FROM conciliacion_interna WHERE razon_social = ? ORDER BY fecha, numero');
 
 function clave(row) {
   return `${row.cuit_contraparte}|${row.tipo_codigo}|${row.pdv}|${row.numero}`;
@@ -151,8 +141,15 @@ function clave(row) {
 
 // Cruza ARCA vs interna por (cuit, tipo, pdv, número). Devuelve una fila por comprobante, marcando
 // si está en ambos lados, solo en ARCA (falta cargarlo en el sistema interno) o solo en interna.
-export function obtenerConciliacion(razonSocial) {
-  const arca = selectComprasCargadas.all(razonSocial).map((r) => ({
+// La conciliación de comprobantes es contra las compras del sistema interno: se compara contra las
+// mismas compras cargadas en "Mis Comprobantes (Emitidos - Recibidos)" de Cargar Datos (tabla
+// comprobantes), sin necesidad de subirlas de nuevo acá.
+export async function obtenerConciliacion(razonSocial) {
+  const arcaRows = await all(
+    "SELECT fecha, periodo, tipo_comprobante, pdv, numero_desde, cuit_contraparte, denominacion_contraparte, total FROM comprobantes WHERE razon_social = ? AND tipo = 'compra' ORDER BY fecha, numero_desde",
+    [razonSocial]
+  );
+  const arca = arcaRows.map((r) => ({
     fecha: r.fecha,
     periodo: r.periodo,
     tipo_comprobante: r.tipo_comprobante,
@@ -163,7 +160,7 @@ export function obtenerConciliacion(razonSocial) {
     denominacion_contraparte: r.denominacion_contraparte,
     total: r.total,
   })).filter((r) => r.cuit_contraparte && r.pdv && r.numero);
-  const interna = selectInterna.all(razonSocial);
+  const interna = await all('SELECT * FROM conciliacion_interna WHERE razon_social = ? ORDER BY fecha, numero', [razonSocial]);
   const internaPorClave = new Map(interna.map((r) => [clave(r), r]));
   const usadas = new Set();
 
@@ -217,13 +214,14 @@ export function obtenerConciliacion(razonSocial) {
   };
 }
 
-export function comprobantesFaltantesEnInterna(razonSocial) {
-  return obtenerConciliacion(razonSocial).filas.filter((f) => f.estado === 'falta_interno');
+export async function comprobantesFaltantesEnInterna(razonSocial) {
+  const { filas } = await obtenerConciliacion(razonSocial);
+  return filas.filter((f) => f.estado === 'falta_interno');
 }
 
-const deleteInterna = db.prepare('DELETE FROM conciliacion_interna WHERE razon_social = ?');
-
-export function limpiarInterna(razonSocial) { deleteInterna.run(razonSocial); }
+export async function limpiarInterna(razonSocial) {
+  await run('DELETE FROM conciliacion_interna WHERE razon_social = ?', [razonSocial]);
+}
 
 // --- Interna vs Externa -----------------------------------------------------------------------
 // Recalcula la posición de IVA con nuestra propia metodología (misma regla de signo por
@@ -234,11 +232,9 @@ export function limpiarInterna(razonSocial) { deleteInterna.run(razonSocial); }
 // (posiciones_historicas). Como esa tabla solo guarda el mes en curso (una vez que un período tiene
 // DDJJ, ARCA ya no se vuelve a cargar ahí), la comparación solo es posible mientras el período
 // todavía no tenía DDJJ al momento de cargarlo.
-const selectComprobantesTodo = db.prepare('SELECT periodo, tipo, tipo_comprobante, cuit_contraparte, iva, fecha FROM comprobantes WHERE razon_social = ?');
-
-export function posicionInternaPorPeriodo(razonSocial) {
-  const rows = selectComprobantesTodo.all(razonSocial);
-  const noCorresponde = cuitsNoCorresponde();
+export async function posicionInternaPorPeriodo(razonSocial) {
+  const rows = await all('SELECT periodo, tipo, tipo_comprobante, cuit_contraparte, iva, fecha FROM comprobantes WHERE razon_social = ?', [razonSocial]);
+  const noCorresponde = await cuitsNoCorresponde();
 
   const porPeriodo = new Map();
   for (const r of rows) {
@@ -257,7 +253,7 @@ export function posicionInternaPorPeriodo(razonSocial) {
 
   // Mismo crédito fiscal adicional que en el Dashboard (Suma de Rem. 10 × porcentaje configurable),
   // sumado acá también para que "Interno" sea comparable con el resultado fiscal real.
-  const creditos931 = creditoFiscal931PorPeriodo(razonSocial);
+  const creditos931 = await creditoFiscal931PorPeriodo(razonSocial);
   for (const [periodo, credito] of creditos931) {
     if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, { periodo, iva_ventas: 0, iva_compras: 0, credito_931: 0, ultima_fecha: null });
     const acc = porPeriodo.get(periodo);
@@ -268,15 +264,13 @@ export function posicionInternaPorPeriodo(razonSocial) {
   return [...porPeriodo.values()].sort((a, b) => a.periodo.localeCompare(b.periodo));
 }
 
-const selectHistoricos = db.prepare('SELECT periodo, iva_ventas, iva_compras, diferencia, fecha_presentacion FROM posiciones_historicas WHERE razon_social = ? ORDER BY periodo');
-
 // Une, por período, lo que calculamos nosotros (interno) con lo que declaró el estudio (externo).
 // ultima_fecha_arca sirve para que el frontend pueda avisar si el mes de ARCA todavía está
 // incompleto (mes en curso) en vez de mostrar una diferencia que en realidad es solo por eso.
-export function conciliacionInternaExterna(razonSocial) {
-  const internos = posicionInternaPorPeriodo(razonSocial);
+export async function conciliacionInternaExterna(razonSocial) {
+  const internos = await posicionInternaPorPeriodo(razonSocial);
   const internoPorPeriodo = new Map(internos.map((i) => [i.periodo, i]));
-  const externos = selectHistoricos.all(razonSocial);
+  const externos = await all('SELECT periodo, iva_ventas, iva_compras, diferencia, fecha_presentacion FROM posiciones_historicas WHERE razon_social = ? ORDER BY periodo', [razonSocial]);
   const externoPorPeriodo = new Map(externos.map((e) => [e.periodo, e]));
 
   const periodos = [...new Set([...internoPorPeriodo.keys(), ...externoPorPeriodo.keys()])].sort();

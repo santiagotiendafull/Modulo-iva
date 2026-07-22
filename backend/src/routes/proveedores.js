@@ -3,22 +3,22 @@ import { listarProveedores, establecerEstado, comprasExcluidasPorProveedor } fro
 
 const router = Router();
 
-router.get('/', (req, res) => {
-  res.json(listarProveedores());
+router.get('/', async (req, res) => {
+  res.json(await listarProveedores());
 });
 
-router.put('/:cuit', (req, res) => {
+router.put('/:cuit', async (req, res) => {
   const { estado } = req.body;
   try {
-    establecerEstado(req.params.cuit, estado);
+    await establecerEstado(req.params.cuit, estado);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-router.get('/excluidas', (req, res) => {
-  res.json(comprasExcluidasPorProveedor());
+router.get('/excluidas', async (req, res) => {
+  res.json(await comprasExcluidasPorProveedor());
 });
 
 export default router;

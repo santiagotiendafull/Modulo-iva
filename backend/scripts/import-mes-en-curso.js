@@ -3,11 +3,13 @@
 // (razon_social, tipo, archivo_origen).
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { initDb } from '../src/db.js';
 import { importarTodosLosArchivos } from '../src/services/mesEnCursoService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SOURCE_DIR = path.join(__dirname, '..', '..', 'data', 'source', 'mes-en-curso');
 
+await initDb();
 const { total, detalle } = await importarTodosLosArchivos(SOURCE_DIR);
 for (const d of detalle) {
   console.log(`[${d.razonSocial ?? '??'}] ${d.archivo}: ${d.filas} comprobantes`);

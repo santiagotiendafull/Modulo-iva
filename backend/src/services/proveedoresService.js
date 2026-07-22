@@ -2,41 +2,37 @@
 // de sus facturas toma crédito fiscal, sin importar la letra del comprobante. La clasificación es
 // global por CUIT (no depende de la razón social) y queda guardada para que los próximos Excel que
 // se suban ya la respeten automáticamente.
-import { db } from '../db.js';
+import { all, run } from '../db.js';
 import { signoComprobante } from './clasificacionComprobantes.js';
 
-const upsertStmt = db.prepare(`
-  INSERT INTO proveedores (cuit, estado, updated_at) VALUES (?, ?, datetime('now'))
-  ON CONFLICT (cuit) DO UPDATE SET estado = excluded.estado, updated_at = excluded.updated_at
-`);
-
-export function establecerEstado(cuit, estado) {
+export async function establecerEstado(cuit, estado) {
   if (!cuit) throw new Error('falta el CUIT del proveedor');
   if (estado !== 'corresponde' && estado !== 'no_corresponde') {
     throw new Error('estado debe ser "corresponde" o "no_corresponde"');
   }
-  upsertStmt.run(cuit, estado);
+  await run(`
+    INSERT INTO proveedores (cuit, estado, updated_at) VALUES (?, ?, datetime('now'))
+    ON CONFLICT (cuit) DO UPDATE SET estado = excluded.estado, updated_at = excluded.updated_at
+  `, [cuit, estado]);
 }
 
 // CUITs marcados "no_corresponde" — se usa para vetar esas compras en todos los cálculos de IVA.
-export function cuitsNoCorresponde() {
-  const rows = db.prepare("SELECT cuit FROM proveedores WHERE estado = 'no_corresponde'").all();
+export async function cuitsNoCorresponde() {
+  const rows = await all("SELECT cuit FROM proveedores WHERE estado = 'no_corresponde'");
   return new Set(rows.map((r) => r.cuit));
 }
 
 // Lista de proveedores de compras vistos en los comprobantes cargados, con su clasificación (o
 // "nuevo" si todavía no se clasificó) y el volumen de compras que le corresponde a cada uno.
-export function listarProveedores() {
-  const rows = db
-    .prepare(`
-      SELECT cuit_contraparte AS cuit, denominacion_contraparte AS denominacion,
-             tipo_comprobante, neto_gravado, iva, razon_social
-      FROM comprobantes
-      WHERE tipo = 'compra' AND cuit_contraparte IS NOT NULL AND cuit_contraparte != ''
-    `)
-    .all();
+export async function listarProveedores() {
+  const rows = await all(`
+    SELECT cuit_contraparte AS cuit, denominacion_contraparte AS denominacion,
+           tipo_comprobante, neto_gravado, iva, razon_social
+    FROM comprobantes
+    WHERE tipo = 'compra' AND cuit_contraparte IS NOT NULL AND cuit_contraparte != ''
+  `);
 
-  const estados = new Map(db.prepare('SELECT cuit, estado FROM proveedores').all().map((p) => [p.cuit, p.estado]));
+  const estados = new Map((await all('SELECT cuit, estado FROM proveedores')).map((p) => [p.cuit, p.estado]));
 
   const porCuit = new Map();
   for (const r of rows) {
@@ -69,19 +65,17 @@ export function listarProveedores() {
 
 // Compras que no se toman porque su proveedor está marcado "no_corresponde" — para el listado y el
 // total de monto gravado / IVA que se pierde por ese motivo.
-export function comprasExcluidasPorProveedor() {
-  const noCorresponde = cuitsNoCorresponde();
+export async function comprasExcluidasPorProveedor() {
+  const noCorresponde = await cuitsNoCorresponde();
   if (noCorresponde.size === 0) return { filas: [], totales: { neto_gravado: 0, iva: 0 } };
 
-  const rows = db
-    .prepare(`
-      SELECT razon_social, periodo, fecha, tipo_comprobante, cuit_contraparte AS cuit,
-             denominacion_contraparte AS denominacion, neto_gravado, iva
-      FROM comprobantes
-      WHERE tipo = 'compra' AND cuit_contraparte IS NOT NULL AND cuit_contraparte != ''
-      ORDER BY fecha DESC
-    `)
-    .all();
+  const rows = await all(`
+    SELECT razon_social, periodo, fecha, tipo_comprobante, cuit_contraparte AS cuit,
+           denominacion_contraparte AS denominacion, neto_gravado, iva
+    FROM comprobantes
+    WHERE tipo = 'compra' AND cuit_contraparte IS NOT NULL AND cuit_contraparte != ''
+    ORDER BY fecha DESC
+  `);
 
   const filas = [];
   let totalGravado = 0;

@@ -1,7 +1,7 @@
 // Historial de todo lo cargado en "Cargar datos", para poder controlar de un vistazo qué falta:
 // Mis Comprobantes Recibidos/Emitidos (ARCA, mes en curso), Formulario 931 y DDJJ presentadas, por
 // razón social y período.
-import { db } from '../db.js';
+import { all } from '../db.js';
 import { formulario931PorPeriodo } from './formulario931Service.js';
 
 const RAZONES = ['Target', 'NT'];
@@ -28,29 +28,29 @@ function esPeriodoCompleto(periodo, ultimaFecha) {
   return diffDias >= 0 && diffDias <= TOLERANCIA_DIAS_CIERRE;
 }
 
-function comprobantesPorPeriodo(razonSocial, tipo) {
-  const rows = db
-    .prepare(`
-      SELECT periodo, MAX(fecha) as ultima_fecha, COUNT(*) as cantidad
-      FROM comprobantes WHERE razon_social = ? AND tipo = ?
-      GROUP BY periodo
-    `)
-    .all(razonSocial, tipo);
+async function comprobantesPorPeriodo(razonSocial, tipo) {
+  const rows = await all(`
+    SELECT periodo, MAX(fecha) as ultima_fecha, COUNT(*) as cantidad
+    FROM comprobantes WHERE razon_social = ? AND tipo = ?
+    GROUP BY periodo
+  `, [razonSocial, tipo]);
   return new Map(rows.map((r) => [r.periodo, r]));
 }
 
-function ddjjPorPeriodo(razonSocial) {
-  const rows = db.prepare('SELECT periodo, fecha_presentacion FROM posiciones_historicas WHERE razon_social = ?').all(razonSocial);
+async function ddjjPorPeriodo(razonSocial) {
+  const rows = await all('SELECT periodo, fecha_presentacion FROM posiciones_historicas WHERE razon_social = ?', [razonSocial]);
   return new Map(rows.map((r) => [r.periodo, r]));
 }
 
-export function historialCargas() {
+export async function historialCargas() {
   const filas = [];
   for (const razonSocial of RAZONES) {
-    const recibidos = comprobantesPorPeriodo(razonSocial, 'compra');
-    const emitidos = comprobantesPorPeriodo(razonSocial, 'venta');
-    const ddjj = ddjjPorPeriodo(razonSocial);
-    const f931 = formulario931PorPeriodo(razonSocial);
+    const [recibidos, emitidos, ddjj, f931] = await Promise.all([
+      comprobantesPorPeriodo(razonSocial, 'compra'),
+      comprobantesPorPeriodo(razonSocial, 'venta'),
+      ddjjPorPeriodo(razonSocial),
+      formulario931PorPeriodo(razonSocial),
+    ]);
 
     const periodos = new Set([...recibidos.keys(), ...emitidos.keys(), ...ddjj.keys(), ...f931.keys()]);
     for (const periodo of periodos) {
