@@ -1,10 +1,11 @@
 import { useState } from 'react';
 
 const CLAVE_CORRECTA = 'IVAfull';
-const STORAGE_KEY = 'modulo-iva-autenticado';
 
+// Sin persistencia a propósito: cada vez que se entra al link (o se recarga la página)
+// tiene que pedir la contraseña de nuevo.
 export function estaAutenticado() {
-  return localStorage.getItem(STORAGE_KEY) === 'true';
+  return false;
 }
 
 export default function Login({ onIngresar }) {
@@ -14,7 +15,6 @@ export default function Login({ onIngresar }) {
   function enviar(e) {
     e.preventDefault();
     if (clave === CLAVE_CORRECTA) {
-      localStorage.setItem(STORAGE_KEY, 'true');
       onIngresar();
     } else {
       setError(true);
