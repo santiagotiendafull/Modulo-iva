@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { money, periodoLabel, esCierreDeMes } from '../format';
 import SelectorPeriodo from './SelectorPeriodo';
+import { cacheGet, cacheSet } from '../cache';
 
 const TOLERANCIA = 1; // redondeos de centavos entre metodologías no cuentan como diferencia real
 
@@ -57,23 +58,32 @@ function GrupoComparacion({ titulo, subtituloInterno, subtituloExterno, interno,
 }
 
 export default function ConciliacionInternaExterna({ razonSocial }) {
-  const [datos, setDatos] = useState(null);
-  const [cargando, setCargando] = useState(true);
+  const cacheKeyInicial = `conciliacion-interna-externa-${razonSocial}`;
+  const cacheadoInicial = cacheGet(cacheKeyInicial);
+  const [datos, setDatos] = useState(cacheadoInicial ?? null);
+  const [cargando, setCargando] = useState(!cacheadoInicial);
   const [error, setError] = useState(null);
-  const [periodoSeleccionado, setPeriodoSeleccionado] = useState(null);
+  const [periodoSeleccionado, setPeriodoSeleccionado] = useState(() => {
+    const periodos = cacheadoInicial?.filas?.map((f) => f.periodo) ?? [];
+    return periodos.at(-1) ?? null;
+  });
 
   const recargar = useCallback(async () => {
-    setCargando(true);
-    setError(null);
+    const key = `conciliacion-interna-externa-${razonSocial}`;
+    const habiaCache = !!cacheGet(key);
+    setDatos(cacheGet(key) ?? null);
+    setCargando(!habiaCache);
+    if (!habiaCache) setError(null);
     try {
       const r = await api.conciliacionInternaExterna(razonSocial);
       setDatos(r);
+      cacheSet(key, r);
       setPeriodoSeleccionado((actual) => {
         const periodos = r.filas.map((f) => f.periodo);
         return actual && periodos.includes(actual) ? actual : periodos.at(-1) ?? null;
       });
     } catch (err) {
-      setError(err.message);
+      if (!habiaCache) setError(err.message);
     } finally {
       setCargando(false);
     }

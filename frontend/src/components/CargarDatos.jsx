@@ -226,7 +226,7 @@ export default function CargarDatos({ onDatosActualizados }) {
     <div className="cargar-datos">
       <div className="cargar-intro">
         <h2>Cargar datos</h2>
-        <p>Estas fuentes se combinan para armar la posición de cada razón social: los PDF de las DDJJ ya presentadas (histórico), el Excel de comprobantes del mes que todavía no se presentó y el Formulario 931.</p>
+        <p className="nota">Estas fuentes se combinan para armar la posición de cada razón social: los PDF de las DDJJ ya presentadas (histórico), el Excel de comprobantes del mes que todavía no se presentó y el Formulario 931.</p>
       </div>
 
       <div className="cargar-grid">
@@ -365,7 +365,7 @@ export default function CargarDatos({ onDatosActualizados }) {
 
       <div className="cargar-intro cargar-intro-seccion">
         <h2>Conciliación de compras</h2>
-        <p>Esto alimenta el cruce de comprobantes en Conciliación contra lo que ya tenés cargado arriba en "Mis Comprobantes (Emitidos - Recibidos)".</p>
+        <p className="nota">Esto alimenta el cruce de comprobantes en Conciliación contra lo que ya tenés cargado arriba en "Mis Comprobantes (Emitidos - Recibidos)".</p>
       </div>
 
       <div className="cargar-grid">

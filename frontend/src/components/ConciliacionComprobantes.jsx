@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { money, fechaLabel } from '../format';
+import { cacheGet, cacheSet } from '../cache';
 
 function EstadoPill({ estado }) {
   if (estado === 'ok') return <span className="estado-pill estado-pill-ok">En ambos</span>;
@@ -9,19 +10,25 @@ function EstadoPill({ estado }) {
 }
 
 export default function ConciliacionComprobantes({ razonSocial }) {
-  const [datos, setDatos] = useState(null);
-  const [cargando, setCargando] = useState(true);
+  const cacheKey = `conciliacion-comprobantes-${razonSocial}`;
+  const cacheado = cacheGet(cacheKey);
+  const [datos, setDatos] = useState(cacheado ?? null);
+  const [cargando, setCargando] = useState(!cacheado);
   const [error, setError] = useState(null);
   const [soloFaltantes, setSoloFaltantes] = useState(true);
 
   const recargar = useCallback(async () => {
-    setCargando(true);
-    setError(null);
+    const key = `conciliacion-comprobantes-${razonSocial}`;
+    const habiaCache = !!cacheGet(key);
+    setDatos(cacheGet(key) ?? null);
+    setCargando(!habiaCache);
+    if (!habiaCache) setError(null);
     try {
       const r = await api.conciliacionComprobantes(razonSocial);
       setDatos(r);
+      cacheSet(key, r);
     } catch (err) {
-      setError(err.message);
+      if (!habiaCache) setError(err.message);
     } finally {
       setCargando(false);
     }

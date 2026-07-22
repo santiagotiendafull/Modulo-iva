@@ -3,6 +3,10 @@ import { api } from '../api';
 import { money } from '../format';
 import SelectorPeriodo from './SelectorPeriodo';
 import TablaComparativaSkeleton from './TablaComparativaSkeleton';
+import { cacheGet, cacheSet } from '../cache';
+
+const CACHE_KEY_PERIODOS = 'consolidado-periodos';
+const cacheKeyDatos = (periodo) => `consolidado-comparativa-${periodo}`;
 
 function fila(label, target, nt, total, resaltar) {
   return (
@@ -23,21 +27,24 @@ function estadoRazon(nombre, p) {
 }
 
 export default function TablaComparativa() {
-  const [periodos, setPeriodos] = useState([]);
-  const [periodo, setPeriodo] = useState(null);
-  const [datos, setDatos] = useState(null);
+  const periodosCache = cacheGet(CACHE_KEY_PERIODOS);
+  const [periodos, setPeriodos] = useState(periodosCache ?? []);
+  const [periodo, setPeriodo] = useState(periodosCache?.at(-1) ?? null);
+  const [datos, setDatos] = useState(() => (periodosCache ? cacheGet(cacheKeyDatos(periodosCache.at(-1))) ?? null : null));
   const [error, setError] = useState(null);
-  const [cargandoPeriodos, setCargandoPeriodos] = useState(true);
+  const [cargandoPeriodos, setCargandoPeriodos] = useState(!periodosCache);
 
   useEffect(() => {
     let cancelado = false;
+    const habiaCache = !!cacheGet(CACHE_KEY_PERIODOS);
     api.periodos('Consolidado')
       .then(({ periodos: p }) => {
         if (cancelado) return;
         setPeriodos(p);
+        cacheSet(CACHE_KEY_PERIODOS, p);
         setPeriodo((actual) => (actual && p.includes(actual) ? actual : p.at(-1) ?? null));
       })
-      .catch((e) => !cancelado && setError(e.message))
+      .catch((e) => !cancelado && !habiaCache && setError(e.message))
       .finally(() => !cancelado && setCargandoPeriodos(false));
     return () => { cancelado = true; };
   }, []);
@@ -45,7 +52,12 @@ export default function TablaComparativa() {
   useEffect(() => {
     if (!periodo) { setDatos(null); return; }
     let cancelado = false;
-    api.comparativa(periodo).then((d) => !cancelado && setDatos(d)).catch((e) => !cancelado && setError(e.message));
+    const key = cacheKeyDatos(periodo);
+    const habiaCache = !!cacheGet(key);
+    setDatos(cacheGet(key) ?? null);
+    api.comparativa(periodo)
+      .then((d) => { if (!cancelado) { setDatos(d); cacheSet(key, d); } })
+      .catch((e) => !cancelado && !habiaCache && setError(e.message));
     return () => { cancelado = true; };
   }, [periodo]);
 

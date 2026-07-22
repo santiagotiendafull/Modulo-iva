@@ -11,7 +11,12 @@ import Proveedores from './components/Proveedores';
 import Conciliacion from './components/Conciliacion';
 import Login, { estaAutenticado } from './components/Login';
 import { ResumenSkeleton, VentasComprasSkeleton, EvolucionSkeleton } from './components/DashboardSkeleton';
+import { cacheGet, cacheSet } from './cache';
 import './App.css';
+
+const keyPeriodos = (razonSocial) => `dashboard-periodos-${razonSocial}`;
+const keyResumen = (razonSocial, periodo) => `dashboard-resumen-${razonSocial}-${periodo}`;
+const keyVentasCompras = (razonSocial, periodo) => `dashboard-ventas-compras-${razonSocial}-${periodo}`;
 
 export default function App() {
   const [autenticado, setAutenticado] = useState(estaAutenticado());
@@ -45,6 +50,7 @@ export default function App() {
     await cargarEvoluciones();
     const { periodos: nuevosPeriodos } = await api.periodos(razonSocial);
     setPeriodos(nuevosPeriodos);
+    cacheSet(keyPeriodos(razonSocial), nuevosPeriodos);
     setPeriodo((actual) => (nuevosPeriodos.includes(actual) ? actual : nuevosPeriodos.at(-1) ?? null));
     setRefreshKey((k) => k + 1);
   }, [razonSocial, cargarEvoluciones]);
@@ -53,15 +59,24 @@ export default function App() {
 
   useEffect(() => {
     let cancelado = false;
-    setCargandoPeriodos(true);
+    const key = keyPeriodos(razonSocial);
+    const cacheado = cacheGet(key);
+    if (cacheado) {
+      setPeriodos(cacheado);
+      setPeriodo((actual) => (cacheado.includes(actual) ? actual : cacheado.at(-1) ?? null));
+      setCargandoPeriodos(false);
+    } else {
+      setCargandoPeriodos(true);
+    }
+    setPeriodoSeleccionado(null);
     api.periodos(razonSocial)
       .then(({ periodos: p }) => {
         if (cancelado) return;
         setPeriodos(p);
-        setPeriodo(p.at(-1) ?? null);
-        setPeriodoSeleccionado(null);
+        cacheSet(key, p);
+        setPeriodo((actual) => (p.includes(actual) ? actual : p.at(-1) ?? null));
       })
-      .catch((e) => !cancelado && setError(e.message))
+      .catch((e) => !cancelado && !cacheado && setError(e.message))
       .finally(() => !cancelado && setCargandoPeriodos(false));
     return () => { cancelado = true; };
   }, [razonSocial]);
@@ -69,16 +84,29 @@ export default function App() {
   useEffect(() => {
     if (!periodo) { setResumen(null); setVentasCompras(null); setCargandoResumen(false); return; }
     let cancelado = false;
+    const rKey = keyResumen(razonSocial, periodo);
+    const vKey = keyVentasCompras(razonSocial, periodo);
+    const cacheadoResumen = cacheGet(rKey);
     setError(null);
-    setCargandoResumen(true);
-    const pedidos = [api.resumen(razonSocial, periodo).then((r) => !cancelado && setResumen(r))];
+    if (cacheadoResumen) {
+      setResumen(cacheadoResumen);
+      setVentasCompras(cacheGet(vKey) ?? null);
+      setCargandoResumen(false);
+    } else {
+      setCargandoResumen(true);
+    }
+    const pedidos = [api.resumen(razonSocial, periodo).then((r) => { if (!cancelado) { setResumen(r); cacheSet(rKey, r); } })];
     if (razonSocial !== 'Consolidado') {
-      pedidos.push(api.ventasCompras(razonSocial, periodo).then((v) => !cancelado && setVentasCompras(v)).catch(() => !cancelado && setVentasCompras(null)));
+      pedidos.push(
+        api.ventasCompras(razonSocial, periodo)
+          .then((v) => { if (!cancelado) { setVentasCompras(v); cacheSet(vKey, v); } })
+          .catch(() => !cancelado && setVentasCompras(null))
+      );
     } else {
       setVentasCompras(null);
     }
     Promise.all(pedidos)
-      .catch((e) => !cancelado && setError(e.message))
+      .catch((e) => !cancelado && !cacheadoResumen && setError(e.message))
       .finally(() => !cancelado && setCargandoResumen(false));
     return () => { cancelado = true; };
   }, [razonSocial, periodo, refreshKey]);

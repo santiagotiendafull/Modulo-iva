@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { money, fechaLabel, periodoLabel } from '../format';
+import { cacheGet, cacheSet } from '../cache';
+
+const CACHE_KEY = 'proveedores';
 
 const RAZONES = ['Target', 'NT'];
 
@@ -43,24 +46,27 @@ function normalizar(texto) {
 }
 
 export default function Proveedores({ onCambio }) {
+  const cacheado = cacheGet(CACHE_KEY);
   const [razonSocial, setRazonSocial] = useState('Target');
-  const [proveedores, setProveedores] = useState([]);
-  const [hayNuevos, setHayNuevos] = useState(false);
-  const [excluidas, setExcluidas] = useState(null);
-  const [cargando, setCargando] = useState(true);
+  const [proveedores, setProveedores] = useState(cacheado?.proveedores ?? []);
+  const [hayNuevos, setHayNuevos] = useState(cacheado?.hayNuevos ?? false);
+  const [excluidas, setExcluidas] = useState(cacheado?.excluidas ?? null);
+  const [cargando, setCargando] = useState(!cacheado);
   const [error, setError] = useState(null);
   const [guardandoCuit, setGuardandoCuit] = useState(null);
   const [busqueda, setBusqueda] = useState('');
 
   const cargar = useCallback(async () => {
-    setError(null);
+    const habiaCache = !!cacheGet(CACHE_KEY);
+    if (!habiaCache) setError(null);
     try {
       const [prov, exc] = await Promise.all([api.proveedores(), api.proveedoresExcluidas()]);
       setProveedores(prov.proveedores);
       setHayNuevos(prov.hayNuevos);
       setExcluidas(exc);
+      cacheSet(CACHE_KEY, { proveedores: prov.proveedores, hayNuevos: prov.hayNuevos, excluidas: exc });
     } catch (err) {
-      setError(err.message);
+      if (!habiaCache) setError(err.message);
     } finally {
       setCargando(false);
     }
@@ -97,7 +103,7 @@ export default function Proveedores({ onCambio }) {
     <div className="proveedores">
       <div className="proveedores-intro">
         <h2>Proveedores</h2>
-        <p>
+        <p className="nota">
           Clasificación de proveedores de compras. Un proveedor "No corresponde" no toma crédito fiscal:
           se resta de IVA Compras todo lo que se le compró, en todas las razones sociales y períodos.
         </p>
