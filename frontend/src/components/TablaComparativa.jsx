@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { money, periodoLabel } from '../format';
+import { money } from '../format';
+import SelectorPeriodo from './SelectorPeriodo';
 
 function fila(label, target, nt, total, resaltar) {
   return (
@@ -60,11 +61,7 @@ export default function TablaComparativa() {
     <div className="tabla-comparativa">
       <div className="tabla-comparativa-header">
         <h3>Posición consolidada Target + NT</h3>
-        <select className="periodo-select" value={periodo || ''} onChange={(e) => setPeriodo(e.target.value)}>
-          {periodos.map((p) => (
-            <option key={p} value={p}>{periodoLabel(p)}</option>
-          ))}
-        </select>
+        <SelectorPeriodo periodo={periodo} periodos={periodos} onCambiarPeriodo={setPeriodo} />
       </div>
       <div className="tabla-scroll">
         <table>
