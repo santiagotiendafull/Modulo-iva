@@ -13,9 +13,10 @@ emitidos_julio_b64.txt
 dist/
 dist-ssr/
 
-# variables de entorno / secretos
+# variables de entorno / secretos (.env.example SÍ se sube, es la plantilla sin valores)
 .env
 .env.*
+!.env.example
 
 # editor / SO
 .vscode/*
