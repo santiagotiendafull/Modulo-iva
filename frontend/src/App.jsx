@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { api, setToken, setOnUnauthorized } from './api';
 import Selector from './components/Selector';
 import ResumenCards from './components/ResumenCards';
@@ -25,6 +25,9 @@ export default function App() {
     if (guardada) setToken(guardada.token);
     return guardada;
   });
+  // Solo para saber si la sesión actual es la que ya estaba guardada al abrir la página (sessionStorage)
+  // — no cambia con logins nuevos.
+  const sesionRestauradaAlAbrir = useRef(!!sesion);
   const [visibilidad, setVisibilidad] = useState({});
   const [vista, setVista] = useState('dashboard');
   const [vistaElegidaPorUsuario, setVistaElegidaPorUsuario] = useState(false);
@@ -60,11 +63,18 @@ export default function App() {
     setOnUnauthorized(() => cerrarSesion());
   }, []);
 
-  // Si la sesión guardada dejó de ser válida (ej. el server se reinició y perdió las
-  // sesiones en memoria), api.js dispara setOnUnauthorized y esto se corrige solo.
+  // Si la sesión que ya estaba guardada al abrir la página dejó de ser válida (ej. el server se
+  // reinició y perdió las sesiones en memoria), esto la detecta y api.js dispara setOnUnauthorized
+  // para corregirlo solo. Una sesión recién creada por un login exitoso NO se re-verifica acá: ya
+  // sabemos que es válida porque el login la acaba de confirmar, y una re-verificación inmediata
+  // podría toparse con un reinicio del servidor (ej. un redeploy) y cerrar la sesión que recién se
+  // abrió, aunque el login haya sido perfectamente válido.
+  useEffect(() => {
+    if (sesionRestauradaAlAbrir.current) api.me().catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (!sesion) return;
-    api.me().catch(() => {});
     api.obtenerVisibilidad().then(setVisibilidad).catch(() => {});
   }, [sesion?.token]);
 
