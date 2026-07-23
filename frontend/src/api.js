@@ -125,10 +125,10 @@ export const api = {
     form.append('archivo', file);
     return req('/conciliacion/pendientes-estudio/preview', { method: 'POST', body: form });
   },
-  importarPendientesEstudio: (file, hoja, razonSocial) => {
+  importarPendientesEstudio: (file, hojas, razonSocial) => {
     const form = new FormData();
     form.append('archivo', file);
-    form.append('hoja', hoja);
+    form.append('hojas', JSON.stringify(hojas));
     form.append('razon_social', razonSocial);
     return req('/conciliacion/pendientes-estudio/importar', { method: 'POST', body: form });
   },

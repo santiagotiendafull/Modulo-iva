@@ -10,7 +10,7 @@ import {
 } from '../services/conciliacionService.js';
 import {
   previsualizarHojas,
-  importarHoja,
+  importarHojas,
   obtenerPendientes,
   obtenerHistorial,
   enviarAEstudio,
@@ -165,10 +165,16 @@ router.post('/pendientes-estudio/preview', soloAdminODev, upload.single('archivo
 
 router.post('/pendientes-estudio/importar', soloAdminODev, upload.single('archivo'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'falta el archivo (campo "archivo")' });
-  const { hoja, razon_social: razonSocial } = req.body;
-  if (!hoja) return res.status(400).json({ error: 'falta indicar qué hoja importar' });
+  const { hojas, razon_social: razonSocial } = req.body;
+  if (!hojas) return res.status(400).json({ error: 'falta indicar qué hoja(s) importar' });
+  let nombresHojas;
   try {
-    const resultado = await importarHoja(req.file.buffer, hoja, razonSocial, req.file.originalname);
+    nombresHojas = JSON.parse(hojas);
+  } catch {
+    return res.status(400).json({ error: 'formato inválido para "hojas" (debe ser un array JSON)' });
+  }
+  try {
+    const resultado = await importarHojas(req.file.buffer, nombresHojas, razonSocial, req.file.originalname);
     res.json(resultado);
   } catch (err) {
     res.status(422).json({ error: err.message });

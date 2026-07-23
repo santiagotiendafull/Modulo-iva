@@ -36,7 +36,7 @@ export default function PendientesEstudio({ razonSocial }) {
 
   const [archivo, setArchivo] = useState(null);
   const [hojas, setHojas] = useState(null);
-  const [hojaElegida, setHojaElegida] = useState('');
+  const [hojasElegidas, setHojasElegidas] = useState(new Set());
   const [razonImport, setRazonImport] = useState('Target');
   const [previsualizando, setPrevisualizando] = useState(false);
   const [importando, setImportando] = useState(false);
@@ -74,8 +74,13 @@ export default function PendientesEstudio({ razonSocial }) {
       const { hojas: h } = await api.previsualizarPendientesEstudio(file);
       setHojas(h);
       if (h.length > 0) {
-        setHojaElegida(h[0].nombre);
-        setRazonImport(sugerirRazonSocial(h[0].nombre));
+        const razonSugerida = sugerirRazonSocial(h[0].nombre);
+        setRazonImport(razonSugerida);
+        // Pre-tilda las hojas que coinciden con la razón social sugerida por la primera hoja: el
+        // estudio suele mandar varias hojas relevantes para la misma razón social (ej. una con lo
+        // que falta de meses anteriores y otra con el mes en curso completo) y hay que importarlas
+        // juntas para que ninguna se quede afuera.
+        setHojasElegidas(new Set(h.filter((s) => sugerirRazonSocial(s.nombre) === razonSugerida).map((s) => s.nombre)));
       }
     } catch (err) {
       setEstadoImport({ tipo: 'error', mensaje: err.message });
@@ -84,14 +89,23 @@ export default function PendientesEstudio({ razonSocial }) {
     }
   }
 
+  function toggleHoja(nombre) {
+    setHojasElegidas((prev) => {
+      const next = new Set(prev);
+      if (next.has(nombre)) next.delete(nombre); else next.add(nombre);
+      return next;
+    });
+  }
+
   async function confirmarImportacion() {
     setImportando(true);
     setEstadoImport(null);
     try {
-      const r = await api.importarPendientesEstudio(archivo, hojaElegida, razonImport);
-      setEstadoImport({ tipo: 'ok', mensaje: `${r.cantidad} comprobantes pendientes cargados para ${razonImport}. Reemplazó la lista anterior de esa razón social.` });
+      const r = await api.importarPendientesEstudio(archivo, [...hojasElegidas], razonImport);
+      setEstadoImport({ tipo: 'ok', mensaje: `${r.cantidad} comprobantes pendientes cargados para ${razonImport} (${hojasElegidas.size} hoja${hojasElegidas.size > 1 ? 's' : ''}). Reemplazó la lista anterior de esa razón social.` });
       setArchivo(null);
       setHojas(null);
+      setHojasElegidas(new Set());
       if (razonImport === razonSocial) cargar();
     } catch (err) {
       setEstadoImport({ tipo: 'error', mensaje: err.message });
@@ -180,18 +194,27 @@ export default function PendientesEstudio({ razonSocial }) {
         {previsualizando && <p className="estado-mensaje">Leyendo el Excel…</p>}
         {hojas && (
           <div className="pendientes-import-controles">
-            <select value={hojaElegida} onChange={(e) => { setHojaElegida(e.target.value); setRazonImport(sugerirRazonSocial(e.target.value)); }}>
+            <p className="nota">
+              Tildá todas las hojas que correspondan a la razón social elegida (ej. la de meses
+              anteriores y la del mes en curso) — se importan juntas.
+            </p>
+            <ul className="hojas-lista">
               {hojas.map((h) => (
-                <option key={h.nombre} value={h.nombre}>{h.nombre} ({h.filas} filas)</option>
+                <li key={h.nombre}>
+                  <label>
+                    <input type="checkbox" checked={hojasElegidas.has(h.nombre)} onChange={() => toggleHoja(h.nombre)} />
+                    {h.nombre} ({h.filas} filas)
+                  </label>
+                </li>
               ))}
-            </select>
+            </ul>
             <div className="razon-tabs">
               {RAZONES.map((r) => (
                 <button key={r} type="button" className={`razon-tab ${razonImport === r ? 'active' : ''}`} onClick={() => setRazonImport(r)}>{r}</button>
               ))}
             </div>
-            <button type="button" className="btn-cargar-todo" onClick={confirmarImportacion} disabled={importando}>
-              {importando ? 'Importando…' : `Importar como pendientes de ${razonImport}`}
+            <button type="button" className="btn-cargar-todo" onClick={confirmarImportacion} disabled={importando || hojasElegidas.size === 0}>
+              {importando ? 'Importando…' : `Importar ${hojasElegidas.size} hoja${hojasElegidas.size === 1 ? '' : 's'} como pendientes de ${razonImport}`}
             </button>
           </div>
         )}

@@ -1,8 +1,9 @@
 // Comprobantes que el estudio contable todavía no tiene: nos manda un Excel acumulado del año cada
-// mes con lo que le falta (a veces formato "Mis Comprobantes Recibidos" completo, a veces con
-// columnas extra Estado/Motivo Diferencia). No se compara contra ARCA — se carga tal cual como la
-// lista de pendientes, y cada carga nueva reemplaza a la anterior para esa razón social (el estudio
-// ya viene sacando de esa lista lo que le vamos mandando).
+// mes con lo que le falta, repartido en varias hojas relevantes para una misma razón social (a veces
+// formato "Mis Comprobantes Recibidos" completo, a veces con columnas extra Estado/Motivo
+// Diferencia). No se compara contra ARCA — se cargan tal cual como la lista de pendientes: se eligen
+// todas las hojas relevantes de esa razón social y se importan juntas, reemplazando por completo lo
+// que había antes (el estudio ya viene sacando de esa lista lo que le vamos mandando).
 import ExcelJS from 'exceljs';
 import { db, all, run, get } from '../db.js';
 
@@ -89,19 +90,13 @@ const INSERT_SQL = `
     (@razon_social, @fecha, @tipo_comprobante, @pdv, @numero, @cuit_contraparte, @denominacion_contraparte, @neto_gravado, @iva, @total, @archivo_origen)
 `;
 
-export async function importarHoja(buffer, nombreHoja, razonSocial, archivoOrigen) {
-  if (!['NT', 'Target'].includes(razonSocial)) throw new Error('Falta razón social (NT o Target).');
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(buffer);
-  const sheet = wb.getWorksheet(nombreHoja);
-  if (!sheet) throw new Error(`No se encontró la hoja "${nombreHoja}" en el Excel.`);
-
+function parsearHoja(sheet, razonSocial, archivoOrigen) {
   const filaEncabezado = indiceFilaEncabezado(sheet);
-  if (!filaEncabezado) throw new Error('No se encontró la fila de encabezados (tiene que haber una columna "Fecha").');
+  if (!filaEncabezado) throw new Error(`Hoja "${sheet.name}": no se encontró la fila de encabezados (tiene que haber una columna "Fecha").`);
   const encabezados = (sheet.getRow(filaEncabezado).values ?? []).slice(1).map(celdaAValor);
   const mapa = mapearEncabezados(encabezados);
   const faltantes = ['cuit', 'total'].filter((c) => mapa[c] === undefined);
-  if (faltantes.length > 0) throw new Error(`A la hoja le faltan columnas obligatorias: ${faltantes.join(', ')}.`);
+  if (faltantes.length > 0) throw new Error(`A la hoja "${sheet.name}" le faltan columnas obligatorias: ${faltantes.join(', ')}.`);
 
   const filas = [];
   sheet.eachRow((row, rowNumber) => {
@@ -129,6 +124,36 @@ export async function importarHoja(buffer, nombreHoja, razonSocial, archivoOrige
       archivo_origen: archivoOrigen,
     });
   });
+  return filas;
+}
+
+// El estudio manda un solo Excel con varias hojas relevantes para la misma razón social (ej. una
+// hoja "Faltantes ... enero a mayo" y otra con el mes en curso completo tipo "T-JUNIO 26"). Hay que
+// importarlas juntas: cada hoja sola no representa el total de lo pendiente, así que se combinan
+// todas las filas y recién ahí se reemplaza lo que había antes para esa razón social.
+export async function importarHojas(buffer, nombresHojas, razonSocial, archivoOrigen) {
+  if (!['NT', 'Target'].includes(razonSocial)) throw new Error('Falta razón social (NT o Target).');
+  if (!Array.isArray(nombresHojas) || nombresHojas.length === 0) throw new Error('Elegí al menos una hoja para importar.');
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+
+  const filasCrudas = [];
+  for (const nombreHoja of nombresHojas) {
+    const sheet = wb.getWorksheet(nombreHoja);
+    if (!sheet) throw new Error(`No se encontró la hoja "${nombreHoja}" en el Excel.`);
+    filasCrudas.push(...parsearHoja(sheet, razonSocial, archivoOrigen));
+  }
+
+  // Algunas hojas del estudio (formato "Mis Comprobantes Recibidos" completo) traen cada comprobante
+  // duplicado: una fila con los montos reales y otra idéntica (mismo CUIT/PDV/Número) con todo en
+  // cero. Se agrupa por CUIT+PDV+Número y se queda la de mayor total absoluto.
+  const porClave = new Map();
+  for (const f of filasCrudas) {
+    const clave = `${f.cuit_contraparte}|${f.pdv}|${f.numero}`;
+    const actual = porClave.get(clave);
+    if (!actual || Math.abs(f.total) > Math.abs(actual.total)) porClave.set(clave, f);
+  }
+  const filas = [...porClave.values()];
 
   await db.batch([
     { sql: 'DELETE FROM pendientes_estudio WHERE razon_social = ?', args: [razonSocial] },
