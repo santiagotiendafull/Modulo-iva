@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { api } from './api';
+import { api, setToken, setOnUnauthorized } from './api';
 import Selector from './components/Selector';
 import ResumenCards from './components/ResumenCards';
 import VentasCompras from './components/VentasCompras';
@@ -9,7 +9,8 @@ import ResultadoFiscalMensual from './components/ResultadoFiscalMensual';
 import CargarDatos from './components/CargarDatos';
 import Proveedores from './components/Proveedores';
 import Conciliacion from './components/Conciliacion';
-import Login, { estaAutenticado } from './components/Login';
+import Configuracion from './components/Configuracion';
+import Login, { sesionGuardada, borrarSesion } from './components/Login';
 import { ResumenSkeleton, VentasComprasSkeleton, EvolucionSkeleton } from './components/DashboardSkeleton';
 import { cacheGet, cacheSet } from './cache';
 import './App.css';
@@ -19,7 +20,12 @@ const keyResumen = (razonSocial, periodo) => `dashboard-resumen-${razonSocial}-$
 const keyVentasCompras = (razonSocial, periodo) => `dashboard-ventas-compras-${razonSocial}-${periodo}`;
 
 export default function App() {
-  const [autenticado, setAutenticado] = useState(estaAutenticado());
+  const [sesion, setSesion] = useState(() => {
+    const guardada = sesionGuardada();
+    if (guardada) setToken(guardada.token);
+    return guardada;
+  });
+  const [visibilidad, setVisibilidad] = useState({});
   const [vista, setVista] = useState('dashboard');
   const [vistaElegidaPorUsuario, setVistaElegidaPorUsuario] = useState(false);
   const [razonSocial, setRazonSocial] = useState('Target');
@@ -34,6 +40,34 @@ export default function App() {
   const [error, setError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const rol = sesion?.rol ?? null;
+  const esDev = rol === 'dev';
+  const puedeVerCargarProveedores = rol === 'administrador' || rol === 'dev';
+  function visible(clave) {
+    return esDev || visibilidad[clave] !== false;
+  }
+
+  function cerrarSesion() {
+    api.logout().catch(() => {});
+    setToken(null);
+    borrarSesion();
+    setSesion(null);
+    setVistaElegidaPorUsuario(false);
+    setVista('dashboard');
+  }
+
+  useEffect(() => {
+    setOnUnauthorized(() => cerrarSesion());
+  }, []);
+
+  // Si la sesión guardada dejó de ser válida (ej. el server se reinició y perdió las
+  // sesiones en memoria), api.js dispara setOnUnauthorized y esto se corrige solo.
+  useEffect(() => {
+    if (!sesion) return;
+    api.me().catch(() => {});
+    api.obtenerVisibilidad().then(setVisibilidad).catch(() => {});
+  }, [sesion?.token]);
+
   const cargarEvoluciones = useCallback(async () => {
     const [nt, target, consolidado] = await Promise.all([
       api.evolucion('NT'),
@@ -41,10 +75,10 @@ export default function App() {
       api.evolucion('Consolidado'),
     ]);
     setEvoluciones({ NT: nt.evolucion, Target: target.evolucion, Consolidado: consolidado.evolucion });
-    if (!vistaElegidaPorUsuario) {
+    if (!vistaElegidaPorUsuario && puedeVerCargarProveedores) {
       setVista(consolidado.evolucion.length === 0 ? 'cargar-datos' : 'dashboard');
     }
-  }, [vistaElegidaPorUsuario]);
+  }, [vistaElegidaPorUsuario, puedeVerCargarProveedores]);
 
   const recargarTodo = useCallback(async () => {
     await cargarEvoluciones();
@@ -55,9 +89,13 @@ export default function App() {
     setRefreshKey((k) => k + 1);
   }, [razonSocial, cargarEvoluciones]);
 
-  useEffect(() => { cargarEvoluciones().catch((e) => setError(e.message)); }, [cargarEvoluciones]);
+  useEffect(() => {
+    if (!sesion) return;
+    cargarEvoluciones().catch((e) => setError(e.message));
+  }, [sesion, cargarEvoluciones]);
 
   useEffect(() => {
+    if (!sesion) return;
     let cancelado = false;
     const key = keyPeriodos(razonSocial);
     const cacheado = cacheGet(key);
@@ -79,9 +117,10 @@ export default function App() {
       .catch((e) => !cancelado && !cacheado && setError(e.message))
       .finally(() => !cancelado && setCargandoPeriodos(false));
     return () => { cancelado = true; };
-  }, [razonSocial]);
+  }, [sesion, razonSocial]);
 
   useEffect(() => {
+    if (!sesion) return;
     if (!periodo) { setResumen(null); setVentasCompras(null); setCargandoResumen(false); return; }
     let cancelado = false;
     const rKey = keyResumen(razonSocial, periodo);
@@ -109,7 +148,7 @@ export default function App() {
       .catch((e) => !cancelado && !cacheadoResumen && setError(e.message))
       .finally(() => !cancelado && setCargandoResumen(false));
     return () => { cancelado = true; };
-  }, [razonSocial, periodo, refreshKey]);
+  }, [sesion, razonSocial, periodo, refreshKey]);
 
   function irA(nuevaVista) {
     setVistaElegidaPorUsuario(true);
@@ -126,8 +165,8 @@ export default function App() {
     setPeriodo(periodos.at(-1) ?? null);
   }
 
-  if (!autenticado) {
-    return <Login onIngresar={() => setAutenticado(true)} />;
+  if (!sesion) {
+    return <Login onIngresar={setSesion} />;
   }
 
   return (
@@ -150,23 +189,38 @@ export default function App() {
                 Conciliación
               </button>
             </nav>
-            <button className={`nav-tab-standalone ${vista === 'cargar-datos' ? 'active' : ''}`} onClick={() => irA('cargar-datos')}>
-              Cargar datos
-            </button>
-            <button className={`nav-tab-standalone ${vista === 'proveedores' ? 'active' : ''}`} onClick={() => irA('proveedores')}>
-              Proveedores
-            </button>
+            {puedeVerCargarProveedores && visible('nav.cargar-datos') && (
+              <button className={`nav-tab-standalone ${vista === 'cargar-datos' ? 'active' : ''}`} onClick={() => irA('cargar-datos')}>
+                Cargar datos
+              </button>
+            )}
+            {puedeVerCargarProveedores && visible('nav.proveedores') && (
+              <button className={`nav-tab-standalone ${vista === 'proveedores' ? 'active' : ''}`} onClick={() => irA('proveedores')}>
+                Proveedores
+              </button>
+            )}
+            {esDev && (
+              <button className={`nav-tab-standalone ${vista === 'configuracion' ? 'active' : ''}`} onClick={() => irA('configuracion')}>
+                Configuración
+              </button>
+            )}
+            <div className="usuario-actual">
+              <span>{sesion.username}</span>
+              <button type="button" className="btn-salir" onClick={cerrarSesion}>Salir</button>
+            </div>
           </div>
         </div>
       </header>
 
       <main className="app-main">
-        {vista === 'cargar-datos' ? (
+        {vista === 'cargar-datos' && puedeVerCargarProveedores ? (
           <CargarDatos onDatosActualizados={recargarTodo} />
-        ) : vista === 'proveedores' ? (
+        ) : vista === 'proveedores' && puedeVerCargarProveedores ? (
           <Proveedores onCambio={recargarTodo} />
+        ) : vista === 'configuracion' && esDev ? (
+          <Configuracion />
         ) : vista === 'conciliacion' ? (
-          <Conciliacion />
+          <Conciliacion rol={rol} visible={visible} />
         ) : (
           <>
             <Selector
@@ -192,19 +246,25 @@ export default function App() {
             ) : periodo ? (
               <>
                 <ResumenCards resumen={resumen} />
-                <ResultadoFiscalMensual
-                  razonSocial={razonSocial}
-                  meses={evoluciones[razonSocial]}
-                  periodoSeleccionado={periodoSeleccionado}
-                  onSeleccionarPeriodo={irAPeriodo}
-                  onDeseleccionar={deseleccionarPeriodo}
-                />
+                {visible('dashboard.resultado-fiscal') && (
+                  <ResultadoFiscalMensual
+                    razonSocial={razonSocial}
+                    meses={evoluciones[razonSocial]}
+                    periodoSeleccionado={periodoSeleccionado}
+                    onSeleccionarPeriodo={irAPeriodo}
+                    onDeseleccionar={deseleccionarPeriodo}
+                  />
+                )}
               </>
             ) : null}
 
-            {periodo && cargandoResumen ? <VentasComprasSkeleton /> : <VentasCompras resumen={resumen} ventasCompras={ventasCompras} />}
+            {visible('dashboard.ventas-compras') && (
+              periodo && cargandoResumen ? <VentasComprasSkeleton /> : <VentasCompras resumen={resumen} ventasCompras={ventasCompras} />
+            )}
 
-            {Object.keys(evoluciones).length === 0 ? <EvolucionSkeleton /> : <EvolucionChart evoluciones={evoluciones} />}
+            {visible('dashboard.evolucion') && (
+              Object.keys(evoluciones).length === 0 ? <EvolucionSkeleton /> : <EvolucionChart evoluciones={evoluciones} />
+            )}
           </>
         )}
       </main>

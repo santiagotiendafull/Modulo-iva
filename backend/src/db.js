@@ -54,4 +54,18 @@ export async function initDb() {
       await run(`ALTER TABLE comprobantes ADD COLUMN ${columna} REAL NOT NULL DEFAULT 0`);
     }
   }
+
+  // Primera vez que corre: siembra las 3 cuentas iniciales (una por rol).
+  const { hashPassword } = await import('./services/authService.js');
+  const yaHayUsuarios = await get('SELECT id FROM usuarios LIMIT 1');
+  if (!yaHayUsuarios) {
+    const cuentasIniciales = [
+      ['Nicolas Trevisan', 'NicolasIVA', 'gerente'],
+      ['Administracion', 'AdminIVA', 'administrador'],
+      ['Devs', 'DevsIVA', 'dev'],
+    ];
+    for (const [username, password, rol] of cuentasIniciales) {
+      await run('INSERT INTO usuarios (username, password_hash, rol) VALUES (?, ?, ?)', [username, hashPassword(password), rol]);
+    }
+  }
 }

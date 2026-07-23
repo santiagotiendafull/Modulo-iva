@@ -4,26 +4,31 @@ import ConciliacionInternaExterna from './ConciliacionInternaExterna';
 
 const RAZONES = ['Target', 'NT'];
 
-export default function Conciliacion() {
+export default function Conciliacion({ rol, visible }) {
+  const puedeVerComprobantes = rol !== 'gerente' && (visible ? visible('conciliacion.comprobantes') : true);
   const [subVista, setSubVista] = useState('interna-externa');
   const [razonSocial, setRazonSocial] = useState('Target');
+
+  const subVistaEfectiva = puedeVerComprobantes ? subVista : 'interna-externa';
 
   return (
     <div className="conciliacion">
       <div className="conciliacion-subnav">
         <div className="pill-tabs">
           <button
-            className={`pill-tab ${subVista === 'interna-externa' ? 'active' : ''}`}
+            className={`pill-tab ${subVistaEfectiva === 'interna-externa' ? 'active' : ''}`}
             onClick={() => setSubVista('interna-externa')}
           >
             Interna vs Externa
           </button>
-          <button
-            className={`pill-tab ${subVista === 'comprobantes' ? 'active' : ''}`}
-            onClick={() => setSubVista('comprobantes')}
-          >
-            Comprobantes
-          </button>
+          {puedeVerComprobantes && (
+            <button
+              className={`pill-tab ${subVistaEfectiva === 'comprobantes' ? 'active' : ''}`}
+              onClick={() => setSubVista('comprobantes')}
+            >
+              Comprobantes
+            </button>
+          )}
         </div>
         <div className="razon-tabs">
           {RAZONES.map((r) => (
@@ -34,7 +39,7 @@ export default function Conciliacion() {
         </div>
       </div>
 
-      {subVista === 'comprobantes' ? (
+      {subVistaEfectiva === 'comprobantes' ? (
         <ConciliacionComprobantes razonSocial={razonSocial} />
       ) : (
         <ConciliacionInternaExterna razonSocial={razonSocial} />

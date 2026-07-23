@@ -97,6 +97,29 @@
   color: var(--accent);
 }
 
+.usuario-actual {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  margin-left: 4px;
+  border-left: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.btn-salir {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.btn-salir:hover { color: var(--bad); border-color: var(--bad); }
+
 .app-main {
   max-width: 1100px;
   width: 100%;
@@ -972,7 +995,7 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   text-align: center;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1007,3 +1030,17 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
   cursor: pointer;
 }
 .login-btn:hover { background: var(--accent-hover); }
+
+/* Configuración (rol dev) */
+.configuracion { display: flex; flex-direction: column; gap: 20px; }
+.visibilidad-lista { display: flex; flex-direction: column; gap: 10px; }
+.visibilidad-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  color: var(--text-h);
+  font-weight: 500;
+  cursor: pointer;
+}
+.visibilidad-item input { width: 16px; height: 16px; cursor: pointer; }

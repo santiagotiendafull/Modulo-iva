@@ -39,6 +39,14 @@ export default function ConciliacionComprobantes({ razonSocial }) {
   const filas = datos?.filas ?? [];
   const filasMostradas = soloFaltantes ? filas.filter((f) => f.estado !== 'ok') : filas;
 
+  async function descargarPdf() {
+    try {
+      await api.descargarFaltantesPdf(razonSocial);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   return (
     <div className="conciliacion-comprobantes">
       <p className="nota">
@@ -56,14 +64,9 @@ export default function ConciliacionComprobantes({ razonSocial }) {
                 <input type="checkbox" checked={soloFaltantes} onChange={(e) => setSoloFaltantes(e.target.checked)} />
                 Solo mostrar faltantes
               </label>
-              <a
-                className="btn-desglose"
-                href={api.urlFaltantesPdf(razonSocial)}
-                target="_blank"
-                rel="noreferrer"
-              >
+              <button type="button" className="btn-desglose" onClick={descargarPdf}>
                 Descargar PDF de faltantes
-              </a>
+              </button>
             </div>
           </div>
 

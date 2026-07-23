@@ -83,6 +83,26 @@ CREATE TABLE IF NOT EXISTS configuracion (
   valor   TEXT NOT NULL
 );
 
+-- Cuentas de acceso a la app. 3 roles: gerente (solo Dashboard + Interna vs Externa),
+-- administrador (todo lo operativo) y dev (todo + apartado de Configuración).
+CREATE TABLE IF NOT EXISTS usuarios (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  username      TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  rol           TEXT NOT NULL CHECK (rol IN ('gerente', 'administrador', 'dev')),
+  creado_en     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Historial de accesos (éxito y fracaso), visible para el rol dev en Configuración.
+CREATE TABLE IF NOT EXISTS accesos (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  username    TEXT NOT NULL,
+  rol         TEXT,
+  exito       INTEGER NOT NULL,
+  fecha_hora  TEXT NOT NULL DEFAULT (datetime('now')),
+  user_agent  TEXT
+);
+
 -- Conciliación: compras cargadas a mano desde el Excel de gestión interna (todavía no existe un
 -- export automático desde el sistema propio), con las mismas claves para poder cruzar contra ARCA.
 CREATE TABLE IF NOT EXISTS conciliacion_interna (

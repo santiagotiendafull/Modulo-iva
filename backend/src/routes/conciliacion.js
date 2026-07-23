@@ -8,8 +8,12 @@ import {
   limpiarInterna,
   conciliacionInternaExterna,
 } from '../services/conciliacionService.js';
+import { requireRole } from '../middleware/auth.js';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const router = Router();
+// El gerente solo puede ver /interna-externa (queda sin requireRole, abierta a los 3 roles).
+// Todo lo demás de Conciliación es administrador/dev.
+const soloAdminODev = requireRole('administrador', 'dev');
 
 function fechaLabel(iso) {
   if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso || '';
@@ -22,7 +26,7 @@ function money(n) {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 }).format(n);
 }
 
-router.post('/interna', upload.single('archivo'), async (req, res) => {
+router.post('/interna', soloAdminODev, upload.single('archivo'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'falta el archivo (campo "archivo")' });
   const { razon_social: razonSocial } = req.body;
   if (!['NT', 'Target'].includes(razonSocial)) {
@@ -36,7 +40,7 @@ router.post('/interna', upload.single('archivo'), async (req, res) => {
   }
 });
 
-router.get('/comprobantes', async (req, res) => {
+router.get('/comprobantes', soloAdminODev, async (req, res) => {
   const { razon_social: razonSocial } = req.query;
   if (!['NT', 'Target'].includes(razonSocial)) {
     return res.status(400).json({ error: 'falta razon_social (NT o Target)' });
@@ -52,7 +56,7 @@ router.get('/interna-externa', async (req, res) => {
   res.json(await conciliacionInternaExterna(razonSocial));
 });
 
-router.delete('/interna', async (req, res) => {
+router.delete('/interna', soloAdminODev, async (req, res) => {
   const { razon_social: razonSocial } = req.query;
   if (!['NT', 'Target'].includes(razonSocial)) {
     return res.status(400).json({ error: 'falta razon_social (NT o Target)' });
@@ -61,7 +65,7 @@ router.delete('/interna', async (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/faltantes.pdf', async (req, res) => {
+router.get('/faltantes.pdf', soloAdminODev, async (req, res) => {
   const { razon_social: razonSocial } = req.query;
   if (!['NT', 'Target'].includes(razonSocial)) {
     return res.status(400).json({ error: 'falta razon_social (NT o Target)' });
