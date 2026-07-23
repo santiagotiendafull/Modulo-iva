@@ -225,8 +225,18 @@ export async function importarArchivo({ fileNameOrBuffer, nombreArchivo, tipo, c
   const { razonSocial, filas } = await parseArchivo({ fileNameOrBuffer, nombreArchivo, tipo, cols, leerFilas, razonSocialManual });
   if (!razonSocial) return { razonSocial: null, filas: [] };
 
+  // Se borra por (razón social, tipo, período) — no por nombre de archivo: ARCA puede entregar el
+  // mismo reporte con un nombre levemente distinto en cada descarga (ej. "archivo (1).xlsx"), y
+  // comparar por archivo_origen dejaba comprobantes viejos sin borrar, sumándose a los nuevos en vez
+  // de reemplazarlos. Cada carga de un período reemplaza por completo lo que había para ese período.
+  const periodos = [...new Set(filas.map((f) => f.periodo))];
+  const deletes = periodos.map((periodo) => ({
+    sql: 'DELETE FROM comprobantes WHERE razon_social = ? AND tipo = ? AND periodo = ?',
+    args: [razonSocial, cols.__tipo, periodo],
+  }));
+
   await db.batch([
-    { sql: 'DELETE FROM comprobantes WHERE razon_social = ? AND tipo = ? AND archivo_origen = ?', args: [razonSocial, cols.__tipo, nombreArchivo] },
+    ...deletes,
     ...filas.map((r) => ({ sql: INSERT_COMPROBANTE_SQL, args: r })),
   ], 'write');
 
