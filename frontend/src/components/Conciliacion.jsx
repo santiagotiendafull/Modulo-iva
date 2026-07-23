@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import ConciliacionComprobantes from './ConciliacionComprobantes';
+import PendientesEstudio from './PendientesEstudio';
 import ConciliacionInternaExterna from './ConciliacionInternaExterna';
 
 const RAZONES = ['Target', 'NT'];
 
 export default function Conciliacion({ rol, visible }) {
-  const puedeVerComprobantes = rol !== 'gerente' && (visible ? visible('conciliacion.comprobantes') : true);
+  const puedeVerPendientes = rol !== 'gerente' && (visible ? visible('conciliacion.comprobantes') : true);
   const [subVista, setSubVista] = useState('interna-externa');
   const [razonSocial, setRazonSocial] = useState('Target');
 
-  const subVistaEfectiva = puedeVerComprobantes ? subVista : 'interna-externa';
+  const subVistaEfectiva = puedeVerPendientes ? subVista : 'interna-externa';
 
   return (
     <div className="conciliacion">
@@ -21,12 +21,12 @@ export default function Conciliacion({ rol, visible }) {
           >
             Interna vs Externa
           </button>
-          {puedeVerComprobantes && (
+          {puedeVerPendientes && (
             <button
-              className={`pill-tab ${subVistaEfectiva === 'comprobantes' ? 'active' : ''}`}
-              onClick={() => setSubVista('comprobantes')}
+              className={`pill-tab ${subVistaEfectiva === 'pendientes-estudio' ? 'active' : ''}`}
+              onClick={() => setSubVista('pendientes-estudio')}
             >
-              Comprobantes
+              Pendientes de envío
             </button>
           )}
         </div>
@@ -39,8 +39,8 @@ export default function Conciliacion({ rol, visible }) {
         </div>
       </div>
 
-      {subVistaEfectiva === 'comprobantes' ? (
-        <ConciliacionComprobantes razonSocial={razonSocial} />
+      {subVistaEfectiva === 'pendientes-estudio' ? (
+        <PendientesEstudio razonSocial={razonSocial} />
       ) : (
         <ConciliacionInternaExterna razonSocial={razonSocial} />
       )}

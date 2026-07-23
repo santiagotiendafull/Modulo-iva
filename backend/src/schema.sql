@@ -76,6 +76,18 @@ CREATE TABLE IF NOT EXISTS formulario_931 (
   UNIQUE (razon_social, periodo)
 );
 
+-- Crédito fiscal manual: monto fijo por período para comprobantes que no aparecen en ARCA pero se
+-- pueden tomar como crédito fiscal (ver posicionService.js, se suma al IVA Compras del período
+-- igual que el crédito del Formulario 931). Se puede borrar cualquier entrada desde Cargar Datos.
+CREATE TABLE IF NOT EXISTS credito_fiscal_manual (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  razon_social  TEXT NOT NULL CHECK (razon_social IN ('NT', 'Target')),
+  periodo       TEXT NOT NULL,
+  monto         REAL NOT NULL,
+  descripcion   TEXT,
+  creado_en     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Configuración editable de la app, clave-valor. Por ahora solo el porcentaje que se aplica a la
 -- Suma de Rem. 10 del Formulario 931 para obtener el crédito fiscal adicional (ver formulario_931).
 CREATE TABLE IF NOT EXISTS configuracion (
@@ -119,4 +131,48 @@ CREATE TABLE IF NOT EXISTS conciliacion_interna (
   archivo_origen            TEXT,
   created_at                TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (razon_social, cuit_contraparte, tipo_codigo, pdv, numero)
+);
+
+-- Comprobantes que el estudio contable todavía no tiene (nos manda un Excel acumulado del año cada
+-- mes con lo que le falta). Cada carga nueva reemplaza por completo la lista de una razón social:
+-- el estudio ya viene sacando de esa lista lo que le vamos mandando.
+CREATE TABLE IF NOT EXISTS pendientes_estudio (
+  id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+  razon_social              TEXT NOT NULL CHECK (razon_social IN ('NT', 'Target')),
+  fecha                     TEXT,
+  tipo_comprobante          TEXT,
+  pdv                       TEXT,
+  numero                    TEXT,
+  cuit_contraparte          TEXT,
+  denominacion_contraparte  TEXT,
+  neto_gravado              REAL NOT NULL DEFAULT 0,
+  iva                       REAL NOT NULL DEFAULT 0,
+  total                     REAL NOT NULL DEFAULT 0,
+  archivo_origen            TEXT,
+  creado_en                 TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Un envío = un PDF generado con un lote de comprobantes tildados para mandar al estudio.
+CREATE TABLE IF NOT EXISTS envio_estudio (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  razon_social  TEXT NOT NULL CHECK (razon_social IN ('NT', 'Target')),
+  usuario       TEXT,
+  cantidad      INTEGER NOT NULL,
+  fecha_hora    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Copia de los datos del comprobante al momento de enviarlo (no referencia pendientes_estudio.id):
+-- así el historial no se rompe cuando una carga nueva reemplaza la lista de pendientes.
+CREATE TABLE IF NOT EXISTS envio_estudio_item (
+  id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+  envio_id                  INTEGER NOT NULL REFERENCES envio_estudio(id),
+  fecha                     TEXT,
+  tipo_comprobante          TEXT,
+  pdv                       TEXT,
+  numero                    TEXT,
+  cuit_contraparte          TEXT,
+  denominacion_contraparte  TEXT,
+  neto_gravado              REAL NOT NULL DEFAULT 0,
+  iva                       REAL NOT NULL DEFAULT 0,
+  total                     REAL NOT NULL DEFAULT 0
 );

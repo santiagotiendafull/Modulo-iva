@@ -677,6 +677,37 @@
 }
 .porcentaje-931-controles span { color: var(--text-muted); font-size: 13px; }
 .porcentaje-931-controles .btn-desglose { margin-left: 8px; }
+
+.credito-manual-form { display: flex; flex-direction: column; gap: 10px; }
+.credito-manual-form input[type="month"],
+.credito-manual-form input[type="number"],
+.credito-manual-form input[type="text"] {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-h);
+  font-size: 13px;
+}
+.credito-manual-historial {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+.credito-manual-historial li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 12.5px;
+}
+.credito-manual-item-info { color: var(--text-h); }
+.credito-manual-descripcion { color: var(--text-muted); }
 .staged-item-quitar {
   flex-shrink: 0;
   width: 24px;
@@ -1044,3 +1075,114 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
   cursor: pointer;
 }
 .visibilidad-item input { width: 16px; height: 16px; cursor: pointer; }
+
+/* Tooltip de cálculo ("i") */
+.info-tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: var(--code-bg);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  font-style: italic;
+  font-family: Georgia, serif;
+  cursor: help;
+  vertical-align: middle;
+}
+.info-tooltip-icono { pointer-events: none; }
+.info-tooltip-texto {
+  display: none;
+  position: absolute;
+  z-index: 20;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 240px;
+  max-width: 60vw;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--text-h);
+  color: var(--surface);
+  font-size: 12px;
+  font-weight: 500;
+  font-style: normal;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  box-shadow: var(--shadow);
+}
+.info-tooltip:hover .info-tooltip-texto,
+.info-tooltip:focus .info-tooltip-texto,
+.info-tooltip:focus-visible .info-tooltip-texto {
+  display: block;
+}
+
+/* Pendientes de envío al estudio */
+.pendientes-estudio { display: flex; flex-direction: column; gap: 20px; }
+.pendientes-import-controles { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.pendientes-import-controles select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-h);
+  font-size: 13px;
+  max-width: 320px;
+}
+.pendientes-acciones { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 4px 0 14px; }
+.pendientes-pdf-proveedor { display: flex; align-items: center; gap: 8px; }
+.pendientes-pdf-proveedor select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-h);
+  font-size: 13px;
+  max-width: 240px;
+}
+.conciliacion-acciones select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-h);
+  font-size: 13px;
+}
+
+.top-proveedores-lista { display: flex; flex-direction: column; gap: 6px; list-style: none; }
+.top-proveedores-lista li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.top-proveedores-lista li:first-child { border-top: none; }
+.top-proveedores-cantidad { color: var(--text-muted); font-size: 12px; margin-left: auto; margin-right: 12px; }
+.top-proveedores-iva { font-weight: 700; color: var(--text-h); font-variant-numeric: tabular-nums; }
+
+.envios-lista { display: flex; flex-direction: column; gap: 8px; }
+.envio-item { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.envio-item-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--code-bg);
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+  cursor: pointer;
+}
+.envio-item .tabla-scroll { padding: 10px 14px; }

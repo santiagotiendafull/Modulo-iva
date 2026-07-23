@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import { periodoLabel } from '../format';
+import { periodoLabel, money } from '../format';
 import Dropzone from './Dropzone';
 import HistorialCargas from './HistorialCargas';
 
@@ -58,11 +58,49 @@ export default function CargarDatos({ onDatosActualizados }) {
   const [subiendoInternaConciliacion, setSubiendoInternaConciliacion] = useState(false);
   const [estadoInternaConciliacion, setEstadoInternaConciliacion] = useState(null);
 
+  const [razonSocialCredito, setRazonSocialCredito] = useState('Target');
+  const [periodoCredito, setPeriodoCredito] = useState('');
+  const [montoCredito, setMontoCredito] = useState('');
+  const [descripcionCredito, setDescripcionCredito] = useState('');
+  const [guardandoCredito, setGuardandoCredito] = useState(false);
+  const [estadoCredito, setEstadoCredito] = useState(null);
+  const [historialCredito, setHistorialCredito] = useState([]);
+
   useEffect(() => {
     api.obtenerPorcentaje931()
       .then((r) => { setPorcentaje931(String(r.porcentaje)); setPorcentaje931Guardado(r.porcentaje); })
       .catch(() => {});
+    cargarHistorialCredito();
   }, []);
+
+  function cargarHistorialCredito() {
+    api.listarCreditoManual().then(setHistorialCredito).catch(() => {});
+  }
+
+  async function agregarCredito(e) {
+    e.preventDefault();
+    setGuardandoCredito(true);
+    setEstadoCredito(null);
+    try {
+      await api.agregarCreditoManual(razonSocialCredito, periodoCredito, montoCredito, descripcionCredito);
+      setEstadoCredito({ tipo: 'ok', mensaje: `Crédito cargado para ${razonSocialCredito} — ${periodoLabel(periodoCredito)}.` });
+      setMontoCredito('');
+      setDescripcionCredito('');
+      cargarHistorialCredito();
+      onDatosActualizados?.();
+    } catch (err) {
+      setEstadoCredito({ tipo: 'error', mensaje: err.message });
+    } finally {
+      setGuardandoCredito(false);
+    }
+  }
+
+  async function borrarCredito(id) {
+    if (!window.confirm('¿Borrar esta carga de crédito fiscal manual?')) return;
+    await api.eliminarCreditoManual(id);
+    cargarHistorialCredito();
+    onDatosActualizados?.();
+  }
 
   async function guardarPorcentaje931() {
     setGuardandoPorcentaje(true);
@@ -360,6 +398,70 @@ export default function CargarDatos({ onDatosActualizados }) {
             </div>
             {estadoPorcentaje && <p className={`estado-mensaje ${estadoPorcentaje.tipo}`}>{estadoPorcentaje.mensaje}</p>}
           </div>
+        </div>
+
+        <div className="fuente-card">
+          <div className="fuente-card-header">
+            <span className="fuente-icono" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M9 12h6M12 9v6" strokeLinecap="round" />
+              </svg>
+            </span>
+            <div>
+              <h3>Crédito fiscal manual</h3>
+              <p>Un monto fijo por período para comprobantes que no aparecen en ARCA pero se pueden tomar como crédito fiscal. Se suma al IVA Compras de ese período.</p>
+            </div>
+          </div>
+
+          <form className="credito-manual-form" onSubmit={agregarCredito}>
+            <div className="razon-tabs">
+              {RAZONES.map((r) => (
+                <button key={r} type="button" className={`razon-tab ${razonSocialCredito === r ? 'active' : ''}`} onClick={() => setRazonSocialCredito(r)}>
+                  {r}
+                </button>
+              ))}
+            </div>
+            <input
+              type="month"
+              value={periodoCredito}
+              onChange={(e) => setPeriodoCredito(e.target.value)}
+              required
+            />
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              placeholder="Monto"
+              value={montoCredito}
+              onChange={(e) => setMontoCredito(e.target.value)}
+              required
+            />
+            <input
+              type="text"
+              placeholder="Descripción (opcional)"
+              value={descripcionCredito}
+              onChange={(e) => setDescripcionCredito(e.target.value)}
+            />
+            <button type="submit" className="btn-desglose" disabled={guardandoCredito || !periodoCredito || !montoCredito}>
+              {guardandoCredito ? 'Agregando…' : 'Agregar'}
+            </button>
+          </form>
+          {estadoCredito && <p className={`estado-mensaje ${estadoCredito.tipo}`}>{estadoCredito.mensaje}</p>}
+
+          {historialCredito.length > 0 && (
+            <ul className="credito-manual-historial">
+              {historialCredito.map((c) => (
+                <li key={c.id}>
+                  <span className="credito-manual-item-info">
+                    <strong>{c.razon_social}</strong> — {periodoLabel(c.periodo)} — {money(c.monto)}
+                    {c.descripcion && <span className="credito-manual-descripcion"> ({c.descripcion})</span>}
+                  </span>
+                  <button type="button" className="staged-item-quitar" onClick={() => borrarCredito(c.id)} aria-label="Borrar">×</button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
 

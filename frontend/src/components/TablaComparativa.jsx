@@ -4,14 +4,26 @@ import { money } from '../format';
 import SelectorPeriodo from './SelectorPeriodo';
 import TablaComparativaSkeleton from './TablaComparativaSkeleton';
 import { cacheGet, cacheSet } from '../cache';
+import InfoTooltip from './InfoTooltip';
 
 const CACHE_KEY_PERIODOS = 'consolidado-periodos';
 const cacheKeyDatos = (periodo) => `consolidado-comparativa-${periodo}`;
 
+const TOOLTIP_FILA = {
+  'IVA Ventas': 'Suma el IVA de todas las ventas: Facturas A, B y C. Las Notas de Crédito restan.',
+  'IVA Compras': "Suma el IVA solo de Facturas A. Excluye proveedores 'No corresponde'. Incluye crédito fiscal del Formulario 931 y manual, si hay cargados.",
+  'Diferencia': 'IVA Ventas menos IVA Compras del período.',
+  'Saldo anterior': 'Saldo técnico que quedó al cierre del mes anterior.',
+  'Saldo técnico': 'Saldo anterior más la diferencia de este mes: a favor del contribuyente o a pagar a ARCA.',
+};
+
 function fila(label, target, nt, total, resaltar) {
   return (
     <tr className={resaltar ? 'fila-resaltada' : ''}>
-      <td className="col-concepto">{label}</td>
+      <td className="col-concepto">
+        {label}
+        {TOOLTIP_FILA[label] && <InfoTooltip texto={TOOLTIP_FILA[label]} />}
+      </td>
       <td>{money(target)}</td>
       <td>{money(nt)}</td>
       <td className="col-total">{money(total)}</td>

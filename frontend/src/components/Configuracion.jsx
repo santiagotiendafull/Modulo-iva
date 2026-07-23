@@ -4,7 +4,7 @@ import { api } from '../api';
 const ETIQUETAS_VISIBILIDAD = {
   'nav.cargar-datos': 'Cargar datos (menú)',
   'nav.proveedores': 'Proveedores (menú)',
-  'conciliacion.comprobantes': 'Conciliación → Comprobantes',
+  'conciliacion.comprobantes': 'Conciliación → Pendientes de envío',
   'dashboard.resultado-fiscal': 'Dashboard → Resultado fiscal por mes',
   'dashboard.ventas-compras': 'Dashboard → Desglose Ventas/Compras',
   'dashboard.evolucion': 'Dashboard → Gráfico de evolución del saldo técnico',

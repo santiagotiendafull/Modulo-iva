@@ -6,6 +6,7 @@ import importarRouter from './routes/importar.js';
 import proveedoresRouter from './routes/proveedores.js';
 import conciliacionRouter from './routes/conciliacion.js';
 import configuracionRouter from './routes/configuracion.js';
+import creditoFiscalManualRouter from './routes/creditoFiscalManual.js';
 import authRouter from './routes/auth.js';
 import { requireAuth, requireRole } from './middleware/auth.js';
 
@@ -25,6 +26,7 @@ app.use('/api/proveedores', requireAuth, requireRole('administrador', 'dev'), pr
 // (Comprobantes, subir/borrar interna, PDF de faltantes) se restringe ruta por ruta.
 app.use('/api/conciliacion', requireAuth, conciliacionRouter);
 app.use('/api/configuracion', requireAuth, configuracionRouter);
+app.use('/api/credito-fiscal-manual', requireAuth, creditoFiscalManualRouter);
 
 const PORT = process.env.PORT || 4310;
 

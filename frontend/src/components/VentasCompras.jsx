@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { api } from '../api';
 import { money } from '../format';
+import InfoTooltip from './InfoTooltip';
+
+const EXPLICACION = {
+  ventas: "Suma el IVA de todas las ventas: Facturas A, B y C. Las Notas de Crédito restan.",
+  compras: "Suma el IVA solo de Facturas A. Excluye proveedores 'No corresponde'. Incluye el crédito fiscal del Formulario 931 y el crédito fiscal manual, si hay cargados.",
+};
 
 const LABEL_ALICUOTA = { '10.5': '10,5%', '21': '21%', '27': '27%' };
 
@@ -80,7 +86,10 @@ function Bloque({ titulo, totalIva, detalle, esCompras, razonSocial, periodo, cr
 
   return (
     <div className="bloque">
-      <h3>{titulo}</h3>
+      <h3>
+        {titulo}
+        <InfoTooltip texto={esCompras ? EXPLICACION.compras : EXPLICACION.ventas} />
+      </h3>
       <div className="bloque-total">{money(totalIva)}</div>
       {detalle?.disponible === false && (
         <p className="bloque-nota">{detalle.motivo}</p>

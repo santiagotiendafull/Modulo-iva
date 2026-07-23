@@ -3,6 +3,7 @@ import { api } from '../api';
 import { money, periodoLabel, esCierreDeMes } from '../format';
 import SelectorPeriodo from './SelectorPeriodo';
 import { cacheGet, cacheSet } from '../cache';
+import InfoTooltip from './InfoTooltip';
 
 const TOLERANCIA = 1; // redondeos de centavos entre metodologías no cuentan como diferencia real
 
@@ -25,10 +26,19 @@ function EstadoPill({ estado }) {
   return <span className={`estado-pill estado-pill-${estado.tipo}`}>{estado.texto}</span>;
 }
 
+const TOOLTIP_CARD = {
+  Interno: 'Nuestro propio cálculo, con la misma metodología del Dashboard, a partir de los comprobantes ya cargados en Cargar Datos.',
+  Externo: 'Lo que presentó el estudio contable (DDJJ) para ese período.',
+  Diferencia: 'Interno menos Externo. Una diferencia real (no solo redondeo) puede indicar comprobantes que faltan cargar o un desfasaje con la DDJJ presentada.',
+};
+
 function CardComparacion({ label, sublabel, valor }) {
   return (
     <div className="card">
-      <div className="card-label">{label}</div>
+      <div className="card-label">
+        {label}
+        {TOOLTIP_CARD[label] && <InfoTooltip texto={TOOLTIP_CARD[label]} />}
+      </div>
       {sublabel && <div className="card-sublabel">{sublabel}</div>}
       <div className="card-value">{valor != null ? money(valor) : '—'}</div>
     </div>
@@ -44,7 +54,10 @@ function GrupoComparacion({ titulo, subtituloInterno, subtituloExterno, interno,
         <CardComparacion label="Interno" sublabel={subtituloInterno} valor={interno} />
         <CardComparacion label="Externo" sublabel={subtituloExterno} valor={externo} />
         <div className={`card card-diferencia ${diferencia == null ? '' : hayDiferencia ? 'card-diferencia-alerta' : 'card-diferencia-ok'}`}>
-          <div className="card-label">Diferencia</div>
+          <div className="card-label">
+            Diferencia
+            <InfoTooltip texto={TOOLTIP_CARD.Diferencia} />
+          </div>
           <div className={`card-value ${diferencia == null ? '' : hayDiferencia ? 'neg' : 'pos'}`}>
             {diferencia != null ? money(diferencia) : '—'}
           </div>

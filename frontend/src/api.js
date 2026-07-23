@@ -21,12 +21,12 @@ async function req(path, opts) {
   return res.json();
 }
 
-// El PDF de faltantes no puede ser un <a href> plano: necesita el header Authorization, que un
-// link no puede mandar. Se pide con fetch autenticado y se dispara la descarga con un blob.
-async function descargarConAuth(path, nombreArchivo) {
-  const headers = {};
+// Los PDF no pueden ser un <a href> plano: necesitan el header Authorization, que un link no puede
+// mandar. Se piden con fetch autenticado y se dispara la descarga con un blob.
+async function descargarConAuth(path, nombreArchivo, opts) {
+  const headers = { ...(opts?.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${BASE_URL}${path}`, { headers });
+  const res = await fetch(`${BASE_URL}${path}`, { ...opts, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || `Error ${res.status}`);
@@ -119,4 +119,36 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(valores),
   }),
+
+  previsualizarPendientesEstudio: (file) => {
+    const form = new FormData();
+    form.append('archivo', file);
+    return req('/conciliacion/pendientes-estudio/preview', { method: 'POST', body: form });
+  },
+  importarPendientesEstudio: (file, hoja, razonSocial) => {
+    const form = new FormData();
+    form.append('archivo', file);
+    form.append('hoja', hoja);
+    form.append('razon_social', razonSocial);
+    return req('/conciliacion/pendientes-estudio/importar', { method: 'POST', body: form });
+  },
+  pendientesEstudio: (razonSocial) => req(`/conciliacion/pendientes-estudio?razon_social=${razonSocial}`),
+  historialPendientesEstudio: (razonSocial) => req(`/conciliacion/pendientes-estudio/historial?razon_social=${razonSocial}`),
+  enviarPendientesEstudio: (razonSocial, ids) => descargarConAuth(
+    '/conciliacion/pendientes-estudio/enviar',
+    `envio-estudio-${razonSocial}.pdf`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ razon_social: razonSocial, ids }) }
+  ),
+  pdfProveedorPendientes: (razonSocial, cuit, nombreProveedor) => descargarConAuth(
+    `/conciliacion/pendientes-estudio/pdf-proveedor?razon_social=${razonSocial}&cuit=${cuit}`,
+    `comprobantes-pendientes-${nombreProveedor || cuit}.pdf`
+  ),
+
+  listarCreditoManual: () => req('/credito-fiscal-manual'),
+  agregarCreditoManual: (razonSocial, periodo, monto, descripcion) => req('/credito-fiscal-manual', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ razon_social: razonSocial, periodo, monto, descripcion }),
+  }),
+  eliminarCreditoManual: (id) => req(`/credito-fiscal-manual/${id}`, { method: 'DELETE' }),
 };
