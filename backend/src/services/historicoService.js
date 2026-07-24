@@ -100,6 +100,45 @@ export async function parseSoloPdfBuffer(buffer, archivoOrigen) {
   return parsePdfText(text, archivoOrigen);
 }
 
+// Carga a mano una posición histórica cuando no hay PDF F.2051 disponible (ej. formato de DDJJ que
+// se usaba antes de migrar a ARCA, que no se puede volver a descargar en PDF). Mismos campos que
+// parsePdfText salvo retenciones/saldo de libre disponibilidad, que quedan en 0 (no se usan en el
+// dashboard, ver lineaDeTiempo en posicionService.js).
+export async function importarManual({ razon_social, periodo, iva_ventas, iva_compras, saldo_tecnico_anterior, saldo_tecnico, archivo_origen }) {
+  const row = {
+    razon_social,
+    periodo,
+    iva_ventas,
+    iva_compras,
+    diferencia: iva_ventas - iva_compras,
+    saldo_tecnico_anterior,
+    saldo_tecnico,
+    retenciones_percepciones: 0,
+    saldo_libre_disponibilidad: 0,
+    fecha_presentacion: null,
+    cuit: null,
+    archivo_origen: archivo_origen || 'Carga manual (formato anterior, sin PDF)',
+  };
+  await run(`
+    INSERT INTO posiciones_historicas
+      (razon_social, periodo, iva_ventas, iva_compras, diferencia, saldo_tecnico_anterior,
+       saldo_tecnico, retenciones_percepciones, saldo_libre_disponibilidad, fecha_presentacion, cuit, archivo_origen)
+    VALUES
+      (@razon_social, @periodo, @iva_ventas, @iva_compras, @diferencia, @saldo_tecnico_anterior,
+       @saldo_tecnico, @retenciones_percepciones, @saldo_libre_disponibilidad, @fecha_presentacion, @cuit, @archivo_origen)
+    ON CONFLICT (razon_social, periodo) DO UPDATE SET
+      iva_ventas = excluded.iva_ventas,
+      iva_compras = excluded.iva_compras,
+      diferencia = excluded.diferencia,
+      saldo_tecnico_anterior = excluded.saldo_tecnico_anterior,
+      saldo_tecnico = excluded.saldo_tecnico,
+      retenciones_percepciones = excluded.retenciones_percepciones,
+      saldo_libre_disponibilidad = excluded.saldo_libre_disponibilidad,
+      archivo_origen = excluded.archivo_origen
+  `, row);
+  return row;
+}
+
 export async function importarPdfBuffer(buffer, archivoOrigen) {
   const row = await parseSoloPdfBuffer(buffer, archivoOrigen);
   await run(`

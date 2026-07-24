@@ -3,7 +3,7 @@ import multer from 'multer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { importarPdfBuffer, parseSoloPdfBuffer, existeHistorico } from '../services/historicoService.js';
+import { importarPdfBuffer, parseSoloPdfBuffer, existeHistorico, importarManual } from '../services/historicoService.js';
 import { importarArchivo, previsualizarArchivo, leerFilasXlsx, EMITIDOS_COLS, RECIBIDOS_COLS } from '../services/mesEnCursoService.js';
 import { historialCargas } from '../services/historialCargasService.js';
 import { importarPdfBuffer931, parseSoloPdfBuffer931, existeFormulario931 } from '../services/formulario931Service.js';
@@ -116,6 +116,30 @@ router.post('/historico', upload.single('archivo'), async (req, res) => {
     const dir = path.join(HISTORICO_DIR, row.razon_social);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, req.file.originalname), req.file.buffer);
+    res.json(row);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Carga a mano una posición histórica sin PDF (ej. DDJJ de un formato anterior que ya no se puede
+// volver a descargar en PDF). Los montos se calculan aparte (fuera de esta ruta) a partir de lo que
+// mande el usuario y se mandan ya resueltos: no hay parseo acá.
+router.post('/historico/manual', async (req, res) => {
+  const { razon_social, periodo, iva_ventas, iva_compras, saldo_tecnico_anterior, saldo_tecnico, archivo_origen } = req.body;
+  if (!['NT', 'Target'].includes(razon_social)) {
+    return res.status(400).json({ error: 'falta razon_social (NT o Target)' });
+  }
+  if (!/^\d{4}-\d{2}$/.test(periodo || '')) {
+    return res.status(400).json({ error: 'periodo inválido (formato YYYY-MM)' });
+  }
+  for (const [campo, valor] of Object.entries({ iva_ventas, iva_compras, saldo_tecnico_anterior, saldo_tecnico })) {
+    if (typeof valor !== 'number' || Number.isNaN(valor)) {
+      return res.status(400).json({ error: `falta o es inválido el campo numérico "${campo}"` });
+    }
+  }
+  try {
+    const row = await importarManual({ razon_social, periodo, iva_ventas, iva_compras, saldo_tecnico_anterior, saldo_tecnico, archivo_origen });
     res.json(row);
   } catch (err) {
     res.status(500).json({ error: err.message });
