@@ -38,7 +38,7 @@ function agruparStaged(archivos) {
   return [...grupos.values()].sort((a, b) => (a.razon + a.periodo).localeCompare(b.razon + b.periodo));
 }
 
-export default function CargarDatos({ onDatosActualizados }) {
+export default function CargarDatos({ onDatosActualizados, visible }) {
   const [subiendoHistorico, setSubiendoHistorico] = useState(false);
   const [estadoHistorico, setEstadoHistorico] = useState(null);
   const [subiendo931, setSubiendo931] = useState(false);
@@ -470,50 +470,54 @@ export default function CargarDatos({ onDatosActualizados }) {
         </div>
       </div>
 
-      <div className="cargar-intro cargar-intro-seccion">
-        <h2>Conciliación de compras</h2>
-        <p className="nota">Esto alimenta el cruce de comprobantes en Conciliación contra lo que ya tenés cargado arriba en "Mis Comprobantes (Emitidos - Recibidos)".</p>
-      </div>
+      {(!visible || visible('cargar-datos.conciliacion-compras')) && (
+        <>
+          <div className="cargar-intro cargar-intro-seccion">
+            <h2>Conciliación de compras</h2>
+            <p className="nota">Esto alimenta el cruce de comprobantes en Conciliación contra lo que ya tenés cargado arriba en "Mis Comprobantes (Emitidos - Recibidos)".</p>
+          </div>
 
-      <div className="cargar-grid">
-        <div className="fuente-card">
-          <div className="fuente-card-header">
-            <span className="fuente-icono" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <path d="M6 3h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" strokeLinejoin="round" />
-                <path d="M14 3v5h5" strokeLinejoin="round" />
-              </svg>
-            </span>
-            <div>
-              <h3>Sistema de gestión interna</h3>
-              <p>
-                Todavía no hay un export automático, así que se carga a mano: un Excel con columnas
-                {' '}<strong>Fecha, Tipo Comprobante, Punto de Venta, Número, CUIT, Proveedor, Total</strong>.
-                El cruce con ARCA es por CUIT + Tipo + Punto de Venta + Número, así que esos cuatro datos tienen que ser exactos
-                (Tipo Comprobante puede ser el código AFIP: 1 Factura A, 6 Factura B, 11 Factura C, etc.).
+          <div className="cargar-grid">
+            <div className="fuente-card">
+              <div className="fuente-card-header">
+                <span className="fuente-icono" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                    <path d="M6 3h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" strokeLinejoin="round" />
+                    <path d="M14 3v5h5" strokeLinejoin="round" />
+                  </svg>
+                </span>
+                <div>
+                  <h3>Sistema de gestión interna</h3>
+                  <p>
+                    Todavía no hay un export automático, así que se carga a mano: un Excel con columnas
+                    {' '}<strong>Fecha, Tipo Comprobante, Punto de Venta, Número, CUIT, Proveedor, Total</strong>.
+                    El cruce con ARCA es por CUIT + Tipo + Punto de Venta + Número, así que esos cuatro datos tienen que ser exactos
+                    (Tipo Comprobante puede ser el código AFIP: 1 Factura A, 6 Factura B, 11 Factura C, etc.).
+                  </p>
+                </div>
+              </div>
+              <div className="razon-tabs">
+                {RAZONES.map((r) => (
+                  <button key={r} className={`razon-tab ${razonSocialInterna === r ? 'active' : ''}`} onClick={() => setRazonSocialInterna(r)}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+              <Dropzone
+                accept=".xlsx"
+                label={subiendoInternaConciliacion ? 'Procesando…' : `Arrastrá o elegí el Excel de compras de ${razonSocialInterna}`}
+                hint="Se carga para la razón social seleccionada arriba"
+                disabled={subiendoInternaConciliacion}
+                onFile={handleInternaConciliacion}
+              />
+              {estadoInternaConciliacion && <p className={`estado-mensaje ${estadoInternaConciliacion.tipo}`}>{estadoInternaConciliacion.mensaje}</p>}
+              <p className="conciliacion-borrar">
+                <button type="button" className="link-borrar" onClick={vaciarInternaConciliacion}>Borrar los comprobantes internos cargados de {razonSocialInterna}</button>
               </p>
             </div>
           </div>
-          <div className="razon-tabs">
-            {RAZONES.map((r) => (
-              <button key={r} className={`razon-tab ${razonSocialInterna === r ? 'active' : ''}`} onClick={() => setRazonSocialInterna(r)}>
-                {r}
-              </button>
-            ))}
-          </div>
-          <Dropzone
-            accept=".xlsx"
-            label={subiendoInternaConciliacion ? 'Procesando…' : `Arrastrá o elegí el Excel de compras de ${razonSocialInterna}`}
-            hint="Se carga para la razón social seleccionada arriba"
-            disabled={subiendoInternaConciliacion}
-            onFile={handleInternaConciliacion}
-          />
-          {estadoInternaConciliacion && <p className={`estado-mensaje ${estadoInternaConciliacion.tipo}`}>{estadoInternaConciliacion.mensaje}</p>}
-          <p className="conciliacion-borrar">
-            <button type="button" className="link-borrar" onClick={vaciarInternaConciliacion}>Borrar los comprobantes internos cargados de {razonSocialInterna}</button>
-          </p>
-        </div>
-      </div>
+        </>
+      )}
 
       <HistorialCargas refreshKey={historialKey} />
     </div>

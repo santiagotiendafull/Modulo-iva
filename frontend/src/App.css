@@ -401,6 +401,8 @@
   gap: 16px;
 }
 .resultado-fiscal h3 { font-size: 15px; }
+.resultado-fiscal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.resultado-fiscal-anio { font-size: 13px; }
 .resultado-fiscal table { font-size: 13.5px; }
 .resultado-fiscal th {
   text-align: right;

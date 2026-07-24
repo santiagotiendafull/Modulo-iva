@@ -237,7 +237,7 @@ export default function App() {
 
       <main className="app-main">
         {vista === 'cargar-datos' && puedeVerCargarProveedores ? (
-          <CargarDatos onDatosActualizados={recargarTodo} />
+          <CargarDatos onDatosActualizados={recargarTodo} visible={visible} />
         ) : vista === 'proveedores' && puedeVerCargarProveedores ? (
           <Proveedores onCambio={recargarTodo} />
         ) : vista === 'configuracion' && esDev ? (

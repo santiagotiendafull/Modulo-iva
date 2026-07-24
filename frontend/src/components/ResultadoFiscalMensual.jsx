@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { money, periodoLabel, esCierreDeMes } from '../format';
 
 function origenInfo(m) {
@@ -9,6 +9,7 @@ function origenInfo(m) {
 
 export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSeleccionado, onSeleccionarPeriodo, onDeseleccionar }) {
   const cajaRef = useRef(null);
+  const [anioFiltro, setAnioFiltro] = useState('');
 
   useEffect(() => {
     if (!periodoSeleccionado) return;
@@ -22,11 +23,24 @@ export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSele
   }, [periodoSeleccionado, onDeseleccionar]);
 
   if (!meses || meses.length === 0) return null;
-  const ordenados = [...meses].sort((a, b) => a.periodo.localeCompare(b.periodo));
+  const anios = [...new Set(meses.map((m) => m.periodo.slice(0, 4)))].sort();
+  const ordenados = [...meses]
+    .filter((m) => !anioFiltro || m.periodo.startsWith(anioFiltro))
+    .sort((a, b) => a.periodo.localeCompare(b.periodo));
 
   return (
     <div className="resultado-fiscal" ref={cajaRef}>
-      <h3>Resultado fiscal por mes — {razonSocial}</h3>
+      <div className="resultado-fiscal-header">
+        <h3>Resultado fiscal por mes — {razonSocial}</h3>
+        {anios.length > 1 && (
+          <select value={anioFiltro} onChange={(e) => setAnioFiltro(e.target.value)} className="resultado-fiscal-anio">
+            <option value="">Todo</option>
+            {anios.map((a) => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+        )}
+      </div>
       <p className="resultado-fiscal-hint">Hacé clic en un mes para ver el detalle de comprobantes más abajo.</p>
       <div className="tabla-scroll">
         <table>
