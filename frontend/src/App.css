@@ -1,3 +1,5 @@
+html { scrollbar-gutter: stable; }
+
 .app-shell {
   width: 100%;
   min-height: 100svh;
@@ -21,7 +23,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 14px 28px;
+  padding: 14px 32px 14px 28px;
   flex-wrap: nowrap;
 }
 .app-header-marca {
@@ -403,6 +405,15 @@
 .resultado-fiscal h3 { font-size: 15px; }
 .resultado-fiscal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .resultado-fiscal-anio { font-size: 13px; }
+.resultado-fiscal td.separador-anio {
+  padding: 8px 0 4px;
+  border-top: 2px solid var(--border-strong, var(--border));
+  border-bottom: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.4px;
+}
 .resultado-fiscal table { font-size: 13.5px; }
 .resultado-fiscal th {
   text-align: right;

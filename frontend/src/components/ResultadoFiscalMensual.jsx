@@ -55,11 +55,13 @@ export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSele
             </tr>
           </thead>
           <tbody>
-            {ordenados.map((m) => {
+            {ordenados.flatMap((m, i) => {
               const aFavor = m.saldo_tecnico >= 0;
               const origen = origenInfo(m);
               const seleccionada = m.periodo === periodoSeleccionado;
-              return (
+              const anio = m.periodo.slice(0, 4);
+              const cambioDeAnio = i > 0 && anio !== ordenados[i - 1].periodo.slice(0, 4);
+              const filaDatos = (
                 <tr
                   key={m.periodo}
                   className={seleccionada ? 'fila-seleccionada' : ''}
@@ -78,6 +80,11 @@ export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSele
                   </td>
                 </tr>
               );
+              if (!cambioDeAnio) return [filaDatos];
+              return [
+                <tr key={`${anio}-separador`}><td colSpan={6} className="separador-anio">{anio}</td></tr>,
+                filaDatos,
+              ];
             })}
           </tbody>
         </table>
