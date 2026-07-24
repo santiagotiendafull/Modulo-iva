@@ -22,6 +22,26 @@ export function borrarSesion() {
   sessionStorage.removeItem(STORAGE_KEY);
 }
 
+function esperar(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// El plan gratuito de Render a veces tarda unos segundos en responder el primer pedido después de
+// estar inactivo (o justo después de un redeploy) — eso hace fallar el fetch a nivel de red (no es
+// un usuario/contraseña incorrectos, que da un error distinto). En ese caso se reintenta solo, para
+// no depender de que la persona se dé cuenta y vuelva a apretar "Ingresar".
+async function loginConReintento(username, clave, intento = 1) {
+  try {
+    return await api.login(username, clave);
+  } catch (err) {
+    if (err instanceof TypeError && intento < 3) {
+      await esperar(2500);
+      return loginConReintento(username, clave, intento + 1);
+    }
+    throw err;
+  }
+}
+
 export default function Login({ onIngresar }) {
   const [username, setUsername] = useState('');
   const [clave, setClave] = useState('');
@@ -33,12 +53,12 @@ export default function Login({ onIngresar }) {
     setEnviando(true);
     setError(null);
     try {
-      const sesion = await api.login(username, clave);
+      const sesion = await loginConReintento(username, clave);
       setToken(sesion.token);
       guardarSesion(sesion);
       onIngresar(sesion);
     } catch (err) {
-      setError(err.message);
+      setError(err instanceof TypeError ? 'No se pudo conectar con el servidor. Probá de nuevo en unos segundos.' : err.message);
     } finally {
       setEnviando(false);
     }

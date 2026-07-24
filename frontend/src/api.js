@@ -41,11 +41,20 @@ async function descargarConAuth(path, nombreArchivo, opts) {
 }
 
 export const api = {
-  login: (username, password) => req('/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  }),
+  // No usa req(): un 401 acá es "usuario o contraseña incorrectos", no una sesión vencida — no
+  // corresponde disparar onUnauthorized (que es para cuando ya había una sesión y dejó de ser válida).
+  login: async (username, password) => {
+    const res = await fetch(`${BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Error ${res.status}`);
+    }
+    return res.json();
+  },
   logout: () => req('/auth/logout', { method: 'POST' }),
   me: () => req('/auth/me'),
   accesos: () => req('/auth/accesos'),
