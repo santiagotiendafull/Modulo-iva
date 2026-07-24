@@ -881,6 +881,10 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
 .tabla-conciliacion-comprobantes th:last-child, .tabla-conciliacion-comprobantes td:last-child { padding-right: 0; }
 .tabla-conciliacion-comprobantes th.col-encontrado { text-align: left; white-space: nowrap; }
 .tabla-conciliacion-comprobantes th.col-encontrado input { vertical-align: middle; margin-right: 6px; }
+.tabla-conciliacion-comprobantes tbody tr.fila-clickeable { cursor: pointer; transition: background 0.12s; }
+.tabla-conciliacion-comprobantes tbody tr.fila-clickeable:hover { background: var(--code-bg); }
+.tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-seleccionada { background: var(--accent-bg); }
+.tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-seleccionada td { color: var(--text-h); }
 
 .estado-pill {
   display: inline-block;

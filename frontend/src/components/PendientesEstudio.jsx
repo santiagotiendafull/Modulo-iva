@@ -16,6 +16,13 @@ function sugerirRazonSocial(nombreHoja) {
   return 'Target';
 }
 
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+function mesLabel(periodo) {
+  const [y, m] = periodo.split('-');
+  const nombre = MESES[Number(m) - 1];
+  return nombre ? `${nombre.charAt(0).toUpperCase()}${nombre.slice(1)} ${y}` : periodo;
+}
+
 function fechaHoraLabel(iso) {
   if (!iso) return '—';
   const d = new Date(iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`);
@@ -32,6 +39,7 @@ export default function PendientesEstudio({ razonSocial }) {
   const [seleccionados, setSeleccionados] = useState(new Set());
   const [busqueda, setBusqueda] = useState('');
   const [orden, setOrden] = useState('fecha');
+  const [mesFiltro, setMesFiltro] = useState('');
   const [envioIdAbierto, setEnvioIdAbierto] = useState(null);
 
   const [archivo, setArchivo] = useState(null);
@@ -118,7 +126,11 @@ export default function PendientesEstudio({ razonSocial }) {
 
   const filas = pendientes?.filas ?? [];
   const busquedaN = normalizar(busqueda.trim());
-  const filtradas = filas.filter((f) => !busquedaN || normalizar(f.denominacion_contraparte).includes(busquedaN) || (f.cuit_contraparte || '').includes(busquedaN));
+  const mesesDisponibles = [...new Set(filas.map((f) => (f.fecha || '').slice(0, 7)).filter(Boolean))].sort().reverse();
+  const filtradas = filas.filter((f) =>
+    (!busquedaN || normalizar(f.denominacion_contraparte).includes(busquedaN) || (f.numero || '').toLowerCase().includes(busquedaN)) &&
+    (!mesFiltro || (f.fecha || '').startsWith(mesFiltro))
+  );
   const ordenadas = [...filtradas].sort((a, b) => {
     if (orden === 'proveedor') return normalizar(a.denominacion_contraparte).localeCompare(normalizar(b.denominacion_contraparte));
     if (orden === 'iva-desc') return b.iva - a.iva;
@@ -287,10 +299,16 @@ export default function PendientesEstudio({ razonSocial }) {
                 <input
                   type="text"
                   className="buscador-proveedores"
-                  placeholder="Buscar por proveedor o CUIT…"
+                  placeholder="Buscar por proveedor o número de operación…"
                   value={busqueda}
                   onChange={(e) => setBusqueda(e.target.value)}
                 />
+                <select value={mesFiltro} onChange={(e) => setMesFiltro(e.target.value)}>
+                  <option value="">Todos los meses</option>
+                  {mesesDisponibles.map((m) => (
+                    <option key={m} value={m}>{mesLabel(m)}</option>
+                  ))}
+                </select>
                 <select value={orden} onChange={(e) => setOrden(e.target.value)}>
                   <option value="fecha">Ordenar por fecha</option>
                   <option value="proveedor">Ordenar por proveedor (A-Z)</option>
@@ -340,8 +358,14 @@ export default function PendientesEstudio({ razonSocial }) {
                 </thead>
                 <tbody>
                   {ordenadas.map((f) => (
-                    <tr key={f.id} className={seleccionados.has(f.id) ? 'fila-seleccionada' : ''}>
-                      <td><input type="checkbox" checked={seleccionados.has(f.id)} onChange={() => toggleSeleccion(f.id)} /></td>
+                    <tr
+                      key={f.id}
+                      className={`fila-clickeable ${seleccionados.has(f.id) ? 'fila-seleccionada' : ''}`}
+                      onClick={() => toggleSeleccion(f.id)}
+                    >
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" checked={seleccionados.has(f.id)} onChange={() => toggleSeleccion(f.id)} />
+                      </td>
                       <td>{fechaLabel(f.fecha)}</td>
                       <td className="col-concepto" title={f.tipo_comprobante}>{f.tipo_comprobante}</td>
                       <td>{f.pdv}</td>
