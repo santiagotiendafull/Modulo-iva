@@ -142,6 +142,11 @@ export const api = {
     return req('/conciliacion/pendientes-estudio/importar', { method: 'POST', body: form });
   },
   pendientesEstudio: (razonSocial) => req(`/conciliacion/pendientes-estudio?razon_social=${razonSocial}`),
+  marcarListoPendiente: (id, listo) => req(`/conciliacion/pendientes-estudio/${id}/listo`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ listo }),
+  }),
   historialPendientesEstudio: (razonSocial) => req(`/conciliacion/pendientes-estudio/historial?razon_social=${razonSocial}`),
   enviarPendientesEstudio: (razonSocial, ids) => descargarConAuth(
     '/conciliacion/pendientes-estudio/enviar',

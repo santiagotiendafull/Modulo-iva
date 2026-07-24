@@ -15,6 +15,7 @@ import {
   obtenerHistorial,
   enviarAEstudio,
   pendientesPorProveedor,
+  marcarListo,
 } from '../services/pendientesEstudioService.js';
 import { requireRole } from '../middleware/auth.js';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -187,6 +188,11 @@ router.get('/pendientes-estudio', soloAdminODev, async (req, res) => {
     return res.status(400).json({ error: 'falta razon_social (NT o Target)' });
   }
   res.json(await obtenerPendientes(razonSocial));
+});
+
+router.patch('/pendientes-estudio/:id/listo', soloAdminODev, async (req, res) => {
+  await marcarListo(req.params.id, !!req.body.listo);
+  res.json({ ok: true });
 });
 
 router.get('/pendientes-estudio/historial', soloAdminODev, async (req, res) => {

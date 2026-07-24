@@ -85,9 +85,9 @@ export async function previsualizarHojas(buffer) {
 
 const INSERT_SQL = `
   INSERT INTO pendientes_estudio
-    (razon_social, fecha, tipo_comprobante, pdv, numero, cuit_contraparte, denominacion_contraparte, neto_gravado, iva, total, archivo_origen)
+    (razon_social, fecha, tipo_comprobante, pdv, numero, cuit_contraparte, denominacion_contraparte, neto_gravado, iva, total, archivo_origen, listo)
   VALUES
-    (@razon_social, @fecha, @tipo_comprobante, @pdv, @numero, @cuit_contraparte, @denominacion_contraparte, @neto_gravado, @iva, @total, @archivo_origen)
+    (@razon_social, @fecha, @tipo_comprobante, @pdv, @numero, @cuit_contraparte, @denominacion_contraparte, @neto_gravado, @iva, @total, @archivo_origen, @listo)
 `;
 
 function parsearHoja(sheet, razonSocial, archivoOrigen) {
@@ -122,6 +122,7 @@ function parsearHoja(sheet, razonSocial, archivoOrigen) {
       iva: val('iva') ? parseFloat(val('iva')) : 0,
       total: val('total') ? parseFloat(val('total')) : 0,
       archivo_origen: archivoOrigen,
+      listo: 0,
     });
   });
   return filas;
@@ -153,7 +154,16 @@ export async function importarHojas(buffer, nombresHojas, razonSocial, archivoOr
     const actual = porClave.get(clave);
     if (!actual || Math.abs(f.total) > Math.abs(actual.total)) porClave.set(clave, f);
   }
-  const filas = [...porClave.values()];
+
+  // Un comprobante marcado "listo" (ya lo encontramos) no deja de estar listo solo porque llegó un
+  // Excel nuevo del estudio — se preserva el estado si sigue apareciendo en la carga nueva.
+  const listosAntes = await all(
+    'SELECT cuit_contraparte, pdv, numero FROM pendientes_estudio WHERE razon_social = ? AND listo = 1',
+    [razonSocial]
+  );
+  const clavesListas = new Set(listosAntes.map((r) => `${r.cuit_contraparte}|${r.pdv}|${r.numero}`));
+
+  const filas = [...porClave.entries()].map(([clave, f]) => ({ ...f, listo: clavesListas.has(clave) ? 1 : 0 }));
 
   await db.batch([
     { sql: 'DELETE FROM pendientes_estudio WHERE razon_social = ?', args: [razonSocial] },
@@ -189,10 +199,17 @@ export async function obtenerPendientes(razonSocial) {
     kpis: {
       total_iva: filas.reduce((acc, f) => acc + f.iva, 0),
       cantidad_pendiente: filas.length,
+      cantidad_listos: filas.filter((f) => f.listo).length,
       cantidad_enviados: enviados?.n ?? 0,
       top_proveedores: topProveedores,
     },
   };
+}
+
+// Papel de trabajo: tildar/destildar un comprobante como "ya lo tenemos" no lo saca de pendientes ni
+// lo manda al estudio — solo queda marcado hasta que se genere el PDF de envío con enviarAEstudio.
+export async function marcarListo(id, listo) {
+  await run('UPDATE pendientes_estudio SET listo = ? WHERE id = ?', [listo ? 1 : 0, id]);
 }
 
 export async function obtenerHistorial(razonSocial) {

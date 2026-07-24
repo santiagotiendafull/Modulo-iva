@@ -16,14 +16,13 @@
   z-index: 10;
 }
 .app-header-inner {
-  max-width: 1100px;
-  margin: 0 auto;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 18px 28px;
-  flex-wrap: wrap;
+  padding: 14px 28px;
+  flex-wrap: nowrap;
 }
 .app-header-marca {
   display: flex;
@@ -56,6 +55,8 @@
   display: flex;
   align-items: center;
   gap: 14px;
+  flex: 1;
+  min-width: 0;
 }
 .app-nav {
   display: flex;
@@ -101,12 +102,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 12px;
-  margin-left: 4px;
+  padding-left: 16px;
+  margin-left: auto;
   border-left: 1px solid var(--border);
   font-size: 13px;
   color: var(--text-muted);
   font-weight: 600;
+  white-space: nowrap;
 }
 .btn-salir {
   padding: 6px 12px;
@@ -877,6 +879,8 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
   text-overflow: ellipsis;
 }
 .tabla-conciliacion-comprobantes th:last-child, .tabla-conciliacion-comprobantes td:last-child { padding-right: 0; }
+.tabla-conciliacion-comprobantes th.col-encontrado { text-align: left; white-space: nowrap; }
+.tabla-conciliacion-comprobantes th.col-encontrado input { vertical-align: middle; margin-right: 6px; }
 
 .estado-pill {
   display: inline-block;
@@ -1009,6 +1013,8 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
   .grupo-comparacion-cards { grid-template-columns: 1fr; }
   .app-header { padding: 16px; }
   .app-main { padding: 16px; }
+  .app-header-inner { flex-wrap: wrap; padding: 14px 16px; }
+  .usuario-actual { margin-left: 0; border-left: none; padding-left: 0; }
 }
 
 /* Login */

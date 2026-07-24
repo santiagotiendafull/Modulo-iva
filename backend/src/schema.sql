@@ -149,6 +149,10 @@ CREATE TABLE IF NOT EXISTS pendientes_estudio (
   iva                       REAL NOT NULL DEFAULT 0,
   total                     REAL NOT NULL DEFAULT 0,
   archivo_origen            TEXT,
+  -- Papel de trabajo: se va tildando a lo largo del mes a medida que se encuentra cada comprobante
+  -- físico. No lo saca de pendientes ni lo manda al estudio — eso recién pasa al generar el PDF de
+  -- envío. Se preserva al reimportar un Excel nuevo (ver importarHojas en pendientesEstudioService.js).
+  listo                     INTEGER NOT NULL DEFAULT 0,
   creado_en                 TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

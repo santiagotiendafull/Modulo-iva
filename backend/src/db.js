@@ -55,6 +55,12 @@ export async function initDb() {
     }
   }
 
+  // Migración simple para bases ya creadas antes de agregar el estado "listo para enviar".
+  const columnasPendientes = new Set((await all('PRAGMA table_info(pendientes_estudio)')).map((c) => c.name));
+  if (!columnasPendientes.has('listo')) {
+    await run('ALTER TABLE pendientes_estudio ADD COLUMN listo INTEGER NOT NULL DEFAULT 0');
+  }
+
   // Primera vez que corre: siembra las 3 cuentas iniciales (una por rol).
   const { hashPassword } = await import('./services/authService.js');
   const yaHayUsuarios = await get('SELECT id FROM usuarios LIMIT 1');

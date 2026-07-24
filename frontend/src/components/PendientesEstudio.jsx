@@ -49,11 +49,13 @@ export default function PendientesEstudio({ razonSocial }) {
   const cargar = useCallback(async () => {
     setCargando(true);
     setError(null);
-    setSeleccionados(new Set());
     try {
       const [p, h] = await Promise.all([api.pendientesEstudio(razonSocial), api.historialPendientesEstudio(razonSocial)]);
       setPendientes(p);
       setHistorial(h);
+      // "Listo" es un estado guardado (papel de trabajo): lo que ya se había tildado en visitas
+      // anteriores sigue tildado acá, no arranca de cero cada vez que se entra a la pantalla.
+      setSeleccionados(new Set(p.filas.filter((f) => f.listo).map((f) => f.id)));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -127,10 +129,15 @@ export default function PendientesEstudio({ razonSocial }) {
   const proveedoresConPendientes = [...new Map(filas.map((f) => [f.cuit_contraparte, { cuit: f.cuit_contraparte, denominacion: f.denominacion_contraparte }])).values()]
     .sort((a, b) => normalizar(a.denominacion).localeCompare(normalizar(b.denominacion)));
 
+  // Tildar/destildar queda guardado al toque (papel de trabajo: se va marcando a lo largo del mes a
+  // medida que se encuentra cada comprobante físico). No lo saca de pendientes ni lo manda al
+  // estudio — eso recién pasa al generar el PDF de envío.
   function toggleSeleccion(id) {
     setSeleccionados((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      const nuevoValor = !next.has(id);
+      if (nuevoValor) next.add(id); else next.delete(id);
+      api.marcarListoPendiente(id, nuevoValor).catch((err) => setError(err.message));
       return next;
     });
   }
@@ -138,12 +145,13 @@ export default function PendientesEstudio({ razonSocial }) {
   function toggleSeleccionTodas() {
     const idsVisibles = ordenadas.map((f) => f.id);
     const todasSeleccionadas = idsVisibles.length > 0 && idsVisibles.every((id) => seleccionados.has(id));
+    const nuevoValor = !todasSeleccionadas;
     setSeleccionados((prev) => {
       const next = new Set(prev);
-      if (todasSeleccionadas) idsVisibles.forEach((id) => next.delete(id));
-      else idsVisibles.forEach((id) => next.add(id));
+      idsVisibles.forEach((id) => (nuevoValor ? next.add(id) : next.delete(id)));
       return next;
     });
+    Promise.all(idsVisibles.map((id) => api.marcarListoPendiente(id, nuevoValor))).catch((err) => setError(err.message));
   }
 
   async function generarPdfEnvio() {
@@ -177,10 +185,12 @@ export default function PendientesEstudio({ razonSocial }) {
   return (
     <div className="pendientes-estudio">
       <p className="nota">
-        Comprobantes que el estudio contable todavía no tiene. Se sube el Excel acumulado que manda
-        cada mes (elegís qué hoja importar); la carga nueva reemplaza por completo la lista de esa
-        razón social. Tildá los que ya tenés listos para mandar y generá el PDF — se registran solos
-        en el historial de abajo.
+        Papel de trabajo: comprobantes que el estudio contable todavía no tiene. A medida que
+        encontrás cada uno a lo largo del mes, tildalo — queda guardado como "listo para mandar" pero
+        sigue en esta lista, no se manda todavía. Cuando llegue el momento de mandarle todo al
+        estudio, generá el PDF: recién ahí esos comprobantes pasan al historial de abajo. Al mes
+        siguiente el estudio manda un Excel nuevo sin lo que ya le mandaste; se sube igual y
+        reemplaza esta lista (lo que ya tenías tildado sigue tildado si sigue apareciendo).
       </p>
 
       <div className="fuente-card">
@@ -238,6 +248,13 @@ export default function PendientesEstudio({ razonSocial }) {
               <div className="card-value">{pendientes.kpis.cantidad_pendiente}</div>
             </div>
             <div className="card">
+              <div className="card-label">
+                Listos para mandar
+                <InfoTooltip texto="Comprobantes que ya encontraste (tildados) pero todavía no se generó el PDF de envío." />
+              </div>
+              <div className="card-value">{seleccionados.size}</div>
+            </div>
+            <div className="card">
               <div className="card-label">Comprobantes ya enviados</div>
               <div className="card-value">{pendientes.kpis.cantidad_enviados}</div>
             </div>
@@ -285,7 +302,7 @@ export default function PendientesEstudio({ razonSocial }) {
 
             <div className="pendientes-acciones">
               <button type="button" className="btn-cargar-todo" onClick={generarPdfEnvio} disabled={enviando || seleccionados.size === 0}>
-                {enviando ? 'Generando…' : `Generar PDF y marcar como enviados (${seleccionados.size})`}
+                {enviando ? 'Generando…' : `Enviar al estudio: generar PDF con los ${seleccionados.size} listos`}
               </button>
               {proveedoresConPendientes.length > 0 && (
                 <div className="pendientes-pdf-proveedor">
@@ -306,7 +323,10 @@ export default function PendientesEstudio({ razonSocial }) {
               <table className="tabla-conciliacion-comprobantes">
                 <thead>
                   <tr>
-                    <th><input type="checkbox" checked={todasVisiblesSeleccionadas} onChange={toggleSeleccionTodas} /></th>
+                    <th className="col-encontrado">
+                      <input type="checkbox" checked={todasVisiblesSeleccionadas} onChange={toggleSeleccionTodas} aria-label="Tildar todos como encontrados" />
+                      <span>Encontrado</span>
+                    </th>
                     <th>Fecha</th>
                     <th className="col-concepto">Comprobante</th>
                     <th>PDV</th>
