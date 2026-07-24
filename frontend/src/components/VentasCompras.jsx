@@ -72,7 +72,7 @@ function DesgloseAlicuotas({ razonSocial, periodo, tipo }) {
   );
 }
 
-function Bloque({ titulo, totalIva, detalle, esCompras, razonSocial, periodo, credito931 }) {
+function Bloque({ titulo, totalIva, detalle, esCompras, razonSocial, periodo, credito931, credito931Estimado }) {
   const filas = detalle?.filas ?? [];
   const totales = detalle?.totales;
   const netoGravado = totales?.neto_gravado ?? filas.reduce((acc, f) => acc + (f.neto_gravado || 0), 0);
@@ -88,6 +88,7 @@ function Bloque({ titulo, totalIva, detalle, esCompras, razonSocial, periodo, cr
     <div className="bloque">
       <h3>
         {titulo}
+        {credito931Estimado && <span className="origen-pill-mini origen-estimado">931 estimado</span>}
         <InfoTooltip texto={esCompras ? EXPLICACION.compras : EXPLICACION.ventas} />
       </h3>
       <div className="bloque-total">{money(totalIva)}</div>
@@ -102,7 +103,10 @@ function Bloque({ titulo, totalIva, detalle, esCompras, razonSocial, periodo, cr
           </div>
           {credito931 > 0 && (
             <p className="bloque-credito-931">
-              Incluye {money(credito931)} de crédito fiscal por Formulario 931 (Suma de Rem. 10 × porcentaje configurado).
+              Incluye {money(credito931)} de crédito fiscal por Formulario 931
+              {credito931Estimado
+                ? ' — todavía no se cargó el 931 de este período, se está estimando con el del mes anterior.'
+                : ' (Suma de Rem. 10 × porcentaje configurado).'}
             </p>
           )}
           {porTipo.size > 0 && (
@@ -161,6 +165,7 @@ export default function VentasCompras({ resumen, ventasCompras }) {
         razonSocial={resumen.razon_social}
         periodo={resumen.periodo}
         credito931={ventasCompras?.credito_931}
+        credito931Estimado={ventasCompras?.credito_931_estimado}
       />
     </div>
   );

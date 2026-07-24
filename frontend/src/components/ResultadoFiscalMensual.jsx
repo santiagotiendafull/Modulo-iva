@@ -35,9 +35,9 @@ export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSele
               <th className="col-concepto">Período</th>
               <th>IVA Ventas</th>
               <th>IVA Compras</th>
-              <th>Diferencia</th>
+              <th>Saldo Técnico</th>
               <th>Saldo anterior</th>
-              <th className="col-total">Saldo técnico</th>
+              <th className="col-total">Saldo Resultante</th>
             </tr>
           </thead>
           <tbody>

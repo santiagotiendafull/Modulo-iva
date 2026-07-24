@@ -278,7 +278,12 @@ export default function CargarDatos({ onDatosActualizados }) {
             </span>
             <div>
               <h3>Históricos</h3>
-              <p>DDJJ ya presentada — PDF "F.2051 - DJ IVA" de ARCA. La app detecta sola si es NT o Target por el CUIT del PDF.</p>
+              <p>
+                DDJJ ya presentada — PDF "F.2051 - DJ IVA" de ARCA. La app detecta sola si es NT o
+                Target por el CUIT del PDF, y de qué mes y año es por el período que trae el PDF —
+                sirve igual para cargar años anteriores (ej. 2025) y así comparar un mes contra el
+                mismo mes del año pasado en "Resultado fiscal por mes" más abajo.
+              </p>
             </div>
           </div>
 

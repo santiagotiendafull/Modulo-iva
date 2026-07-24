@@ -55,7 +55,13 @@ export const api = {
     }
     return res.json();
   },
-  logout: () => req('/auth/logout', { method: 'POST' }),
+  // No usa req(): cerrarSesion() llama a esto también cuando la sesión ya dejó de ser válida (la
+  // detectó onUnauthorized). Si acá también disparara onUnauthorized en un 401, sería una llamada a
+  // cerrarSesion() adentro de otra, en bucle infinito.
+  logout: () => fetch(`${BASE_URL}/auth/logout`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).catch(() => {}),
   me: () => req('/auth/me'),
   accesos: () => req('/auth/accesos'),
   usuarios: () => req('/auth/usuarios'),

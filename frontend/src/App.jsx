@@ -42,6 +42,10 @@ export default function App() {
   const [evoluciones, setEvoluciones] = useState({});
   const [error, setError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  // Al entrar a la app se espera a tener todo lo del dashboard junto (períodos, resumen, evolución)
+  // antes de mostrar nada, en vez de ir revelando cada bloque a medida que llega — una vez lista la
+  // primera carga no se vuelve a esconder, aunque después se cambie de período o razón social.
+  const [cargaInicialLista, setCargaInicialLista] = useState(false);
 
   const rol = sesion?.rol ?? null;
   const esDev = rol === 'dev';
@@ -160,6 +164,15 @@ export default function App() {
     return () => { cancelado = true; };
   }, [sesion, razonSocial, periodo, refreshKey]);
 
+  useEffect(() => {
+    if (cargaInicialLista) return;
+    if (vista !== 'dashboard') { setCargaInicialLista(true); return; }
+    if (cargandoPeriodos) return;
+    if (razonSocial !== 'Consolidado' && !evoluciones[razonSocial]) return;
+    if (periodo && cargandoResumen) return;
+    setCargaInicialLista(true);
+  }, [cargaInicialLista, vista, cargandoPeriodos, cargandoResumen, periodo, razonSocial, evoluciones]);
+
   function irA(nuevaVista) {
     setVistaElegidaPorUsuario(true);
     setVista(nuevaVista);
@@ -231,6 +244,10 @@ export default function App() {
           <Configuracion />
         ) : vista === 'conciliacion' ? (
           <Conciliacion rol={rol} visible={visible} />
+        ) : !cargaInicialLista ? (
+          <div className="carga-inicial">
+            <span className="spinner-anillo" role="status" aria-label="Cargando" />
+          </div>
         ) : (
           <>
             <Selector

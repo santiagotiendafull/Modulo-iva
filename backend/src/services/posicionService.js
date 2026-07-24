@@ -4,10 +4,19 @@
 import { all } from '../db.js';
 import { signoComprobante, contribuyeAlCalculo, esResta, motivoExclusion } from './clasificacionComprobantes.js';
 import { cuitsNoCorresponde } from './proveedoresService.js';
-import { creditoFiscal931, creditoFiscal931PorPeriodo } from './formulario931Service.js';
+import { creditoFiscal931, creditoFiscal931PorPeriodo, existeFormulario931 } from './formulario931Service.js';
 import { creditoManual, creditoManualPorPeriodo } from './creditoFiscalManualService.js';
 
 const RAZONES = ['Target', 'NT'];
+
+// El Formulario 931 de un mes recién está disponible ~10 días después de cerrado (ver
+// formulario931Service.js), así que mientras no se cargó el propio se usa el del mes anterior como
+// estimación del crédito fiscal de ese período — se reemplaza por el monto exacto en cuanto se carga.
+function periodoAnterior(periodo) {
+  const [y, m] = periodo.split('-').map(Number);
+  const fecha = new Date(y, m - 2, 1);
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+}
 
 function periodosHistoricos(razonSocial) {
   return all('SELECT * FROM posiciones_historicas WHERE razon_social = ? ORDER BY periodo', [razonSocial]);
@@ -28,7 +37,7 @@ async function periodosComprobantes(razonSocial) {
     if (r.tipo === 'compra' && noCorresponde.has(r.cuit_contraparte)) continue;
     const signo = signoComprobante(r.tipo, r.tipo_comprobante);
     if (signo === 0) continue;
-    if (!porPeriodo.has(r.periodo)) porPeriodo.set(r.periodo, { periodo: r.periodo, iva_ventas: 0, iva_compras: 0, credito_931: 0, credito_manual: 0 });
+    if (!porPeriodo.has(r.periodo)) porPeriodo.set(r.periodo, { periodo: r.periodo, iva_ventas: 0, iva_compras: 0, credito_931: 0, credito_931_estimado: 0, credito_manual: 0 });
     const acc = porPeriodo.get(r.periodo);
     if (r.tipo === 'venta') acc.iva_ventas += signo * r.iva;
     else acc.iva_compras += signo * r.iva;
@@ -36,15 +45,25 @@ async function periodosComprobantes(razonSocial) {
 
   const creditos931 = await creditoFiscal931PorPeriodo(razonSocial);
   for (const [periodo, credito] of creditos931) {
-    if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, { periodo, iva_ventas: 0, iva_compras: 0, credito_931: 0, credito_manual: 0 });
+    if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, { periodo, iva_ventas: 0, iva_compras: 0, credito_931: 0, credito_931_estimado: 0, credito_manual: 0 });
     const acc = porPeriodo.get(periodo);
     acc.iva_compras += credito;
     acc.credito_931 = credito;
   }
 
+  // Períodos sin su propio 931 cargado todavía: se estima con el crédito del mes anterior.
+  for (const [periodo, acc] of porPeriodo) {
+    if (creditos931.has(periodo)) continue;
+    const estimado = creditos931.get(periodoAnterior(periodo));
+    if (estimado) {
+      acc.iva_compras += estimado;
+      acc.credito_931_estimado = estimado;
+    }
+  }
+
   const creditosManuales = await creditoManualPorPeriodo(razonSocial);
   for (const [periodo, credito] of creditosManuales) {
-    if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, { periodo, iva_ventas: 0, iva_compras: 0, credito_931: 0, credito_manual: 0 });
+    if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, { periodo, iva_ventas: 0, iva_compras: 0, credito_931: 0, credito_931_estimado: 0, credito_manual: 0 });
     const acc = porPeriodo.get(periodo);
     acc.iva_compras += credito;
     acc.credito_manual = credito;
@@ -106,6 +125,7 @@ export async function lineaDeTiempo(razonSocial) {
         iva_ventas: c.iva_ventas,
         iva_compras: c.iva_compras,
         credito_931: c.credito_931,
+        credito_931_estimado: c.credito_931_estimado,
         credito_manual: c.credito_manual,
         diferencia,
         saldo_tecnico_anterior: saldoAnterior,
@@ -148,6 +168,7 @@ export async function resumenPeriodo(razonSocial, periodo) {
       iva_ventas: suma('iva_ventas'),
       iva_compras: suma('iva_compras'),
       credito_931: suma('credito_931'),
+      credito_931_estimado: suma('credito_931_estimado'),
       credito_manual: suma('credito_manual'),
       diferencia: suma('diferencia'),
       saldo_tecnico_anterior: suma('saldo_tecnico_anterior'),
@@ -188,6 +209,7 @@ export async function comparativa(periodo) {
       iva_ventas: suma('iva_ventas'),
       iva_compras: suma('iva_compras'),
       credito_931: suma('credito_931'),
+      credito_931_estimado: suma('credito_931_estimado'),
       credito_manual: suma('credito_manual'),
       diferencia: suma('diferencia'),
       saldo_tecnico_anterior: suma('saldo_tecnico_anterior'),
@@ -269,7 +291,17 @@ export async function ventasCompras(razonSocial, periodo) {
   const compras = anotarYSumar(rows.filter((r) => r.tipo === 'compra'), noCorresponde);
   // El crédito fiscal del 931 y el manual no son comprobantes: se suman aparte al total de IVA
   // Compras para que este detalle cierre con el mismo número que el resumen del período (resumenPeriodo).
-  const credito931 = await creditoFiscal931(razonSocial, periodo);
+  // Si todavía no se cargó el 931 propio de este período, se estima con el del mes anterior.
+  const tienePropio931 = await existeFormulario931(razonSocial, periodo);
+  let credito931 = await creditoFiscal931(razonSocial, periodo);
+  let credito931Estimado = false;
+  if (!tienePropio931) {
+    const estimado = await creditoFiscal931(razonSocial, periodoAnterior(periodo));
+    if (estimado > 0) {
+      credito931 = estimado;
+      credito931Estimado = true;
+    }
+  }
   const creditoManualPeriodo = await creditoManual(razonSocial, periodo);
   return {
     disponible: true,
@@ -278,6 +310,7 @@ export async function ventasCompras(razonSocial, periodo) {
     compras: compras.filas,
     comprasTotales: { ...compras.totales, iva: compras.totales.iva + credito931 + creditoManualPeriodo },
     credito_931: credito931,
+    credito_931_estimado: credito931Estimado,
     credito_manual: creditoManualPeriodo,
   };
 }

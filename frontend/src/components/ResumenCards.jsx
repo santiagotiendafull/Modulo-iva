@@ -41,7 +41,12 @@ export default function ResumenCards({ resumen }) {
         <div className="card">
           <div className="card-label">
             IVA Compras {etiqueta}
-            <InfoTooltip texto="Suma el IVA solo de Facturas A (las únicas que toman crédito fiscal válido; B/C no cuentan). Excluye compras a proveedores marcados 'No corresponde'. Incluye el crédito fiscal del Formulario 931 y el crédito fiscal manual, si hay cargados." />
+            {resumen.credito_931_estimado > 0 && <span className="origen-pill-mini origen-estimado">931 estimado</span>}
+            <InfoTooltip texto={
+              resumen.credito_931_estimado > 0
+                ? `Suma el IVA solo de Facturas A. Excluye proveedores 'No corresponde'. Incluye el crédito fiscal manual si hay cargado. Todavía no se cargó el Formulario 931 de este período: se está estimando con el crédito del mes anterior (${money(resumen.credito_931_estimado)}) hasta que se cargue el propio.`
+                : "Suma el IVA solo de Facturas A (las únicas que toman crédito fiscal válido; B/C no cuentan). Excluye compras a proveedores marcados 'No corresponde'. Incluye el crédito fiscal del Formulario 931 y el crédito fiscal manual, si hay cargados."
+            } />
           </div>
           <div className="card-value">{money(resumen.iva_compras)}</div>
         </div>
