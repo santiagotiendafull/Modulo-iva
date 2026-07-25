@@ -149,42 +149,55 @@ export async function periodosDisponibles(razonSocial) {
   return (await lineaDeTiempo(razonSocial)).map((p) => p.periodo);
 }
 
+// Arma la fila consolidada de un período a partir de las posiciones ya calculadas de cada razón
+// social. Es pura a propósito: la línea de tiempo de NT y Target se calcula una sola vez y se
+// reutiliza para todos los períodos (antes se recalculaba entera por cada mes, lo que hacía que la
+// evolución consolidada tardara decenas de segundos).
+function consolidarPeriodo(nt, target, periodo) {
+  if (!nt && !target) return null;
+  const suma = (campo) => (nt?.[campo] ?? 0) + (target?.[campo] ?? 0);
+  const faltantes = [!target && 'Target', !nt && 'NT'].filter(Boolean);
+  const nota = faltantes.length
+    ? `Vista de gestión interna: suma de Target + NT, no reemplaza la posición individual ante ARCA. ` +
+      `${faltantes.join(' y ')} todavía no tiene datos cargados para este período — se está sumando como si fuera $0, no como saldo real.`
+    : 'Vista de gestión interna: suma de Target + NT, no reemplaza la posición individual ante ARCA.';
+  return {
+    periodo,
+    razon_social: 'Consolidado',
+    origen: [nt?.origen, target?.origen].filter(Boolean).join('+') || null,
+    iva_ventas: suma('iva_ventas'),
+    iva_compras: suma('iva_compras'),
+    credito_931: suma('credito_931'),
+    credito_931_estimado: suma('credito_931_estimado'),
+    credito_manual: suma('credito_manual'),
+    diferencia: suma('diferencia'),
+    saldo_tecnico_anterior: suma('saldo_tecnico_anterior'),
+    saldo_tecnico: suma('saldo_tecnico'),
+    fecha_presentacion: null,
+    ultima_fecha: [nt?.ultima_fecha, target?.ultima_fecha].filter(Boolean).sort().at(-1) ?? null,
+    nota,
+  };
+}
+
 export async function resumenPeriodo(razonSocial, periodo) {
   if (razonSocial === 'Consolidado') {
     const [lineaNt, lineaTarget] = await Promise.all([lineaDeTiempo('NT'), lineaDeTiempo('Target')]);
-    const nt = lineaNt.find((p) => p.periodo === periodo);
-    const target = lineaTarget.find((p) => p.periodo === periodo);
-    if (!nt && !target) return null;
-    const suma = (campo) => (nt?.[campo] ?? 0) + (target?.[campo] ?? 0);
-    const faltantes = [!target && 'Target', !nt && 'NT'].filter(Boolean);
-    const nota = faltantes.length
-      ? `Vista de gestión interna: suma de Target + NT, no reemplaza la posición individual ante ARCA. ` +
-        `${faltantes.join(' y ')} todavía no tiene datos cargados para este período — se está sumando como si fuera $0, no como saldo real.`
-      : 'Vista de gestión interna: suma de Target + NT, no reemplaza la posición individual ante ARCA.';
-    return {
+    return consolidarPeriodo(
+      lineaNt.find((p) => p.periodo === periodo),
+      lineaTarget.find((p) => p.periodo === periodo),
       periodo,
-      razon_social: 'Consolidado',
-      origen: [nt?.origen, target?.origen].filter(Boolean).join('+') || null,
-      iva_ventas: suma('iva_ventas'),
-      iva_compras: suma('iva_compras'),
-      credito_931: suma('credito_931'),
-      credito_931_estimado: suma('credito_931_estimado'),
-      credito_manual: suma('credito_manual'),
-      diferencia: suma('diferencia'),
-      saldo_tecnico_anterior: suma('saldo_tecnico_anterior'),
-      saldo_tecnico: suma('saldo_tecnico'),
-      fecha_presentacion: null,
-      ultima_fecha: [nt?.ultima_fecha, target?.ultima_fecha].filter(Boolean).sort().at(-1) ?? null,
-      nota,
-    };
+    );
   }
   return (await lineaDeTiempo(razonSocial)).find((p) => p.periodo === periodo) ?? null;
 }
 
 export async function evolucionMensual(razonSocial) {
   if (razonSocial === 'Consolidado') {
-    const periodos = await periodosDisponibles('Consolidado');
-    return Promise.all(periodos.map((periodo) => resumenPeriodo('Consolidado', periodo)));
+    const [lineaNt, lineaTarget] = await Promise.all([lineaDeTiempo('NT'), lineaDeTiempo('Target')]);
+    const porPeriodoNt = new Map(lineaNt.map((p) => [p.periodo, p]));
+    const porPeriodoTarget = new Map(lineaTarget.map((p) => [p.periodo, p]));
+    const periodos = [...new Set([...porPeriodoNt.keys(), ...porPeriodoTarget.keys()])].sort();
+    return periodos.map((periodo) => consolidarPeriodo(porPeriodoNt.get(periodo), porPeriodoTarget.get(periodo), periodo));
   }
   return lineaDeTiempo(razonSocial);
 }

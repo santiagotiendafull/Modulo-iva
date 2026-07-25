@@ -5,7 +5,7 @@ import InfoTooltip from './InfoTooltip';
 
 const EXPLICACION = {
   ventas: "Suma el IVA de todas las ventas: Facturas A, B y C. Las Notas de Crédito restan.",
-  compras: "Suma el IVA solo de Facturas A. Excluye proveedores 'No corresponde'. Incluye el crédito fiscal del Formulario 931 y el crédito fiscal manual, si hay cargados.",
+  compras: "Suma el IVA solo de Facturas A y resta las Notas de Crédito A, que revierten una compra que ya tomó crédito fiscal. Excluye proveedores 'No corresponde'. Incluye el crédito fiscal del Formulario 931 y el crédito fiscal manual, si hay cargados.",
 };
 
 const LABEL_ALICUOTA = { '10.5': '10,5%', '21': '21%', '27': '27%' };

@@ -11,7 +11,8 @@ import Proveedores from './components/Proveedores';
 import Conciliacion from './components/Conciliacion';
 import Configuracion from './components/Configuracion';
 import Login, { sesionGuardada, borrarSesion } from './components/Login';
-import { ResumenSkeleton, VentasComprasSkeleton, EvolucionSkeleton } from './components/DashboardSkeleton';
+import { EvolucionSkeleton } from './components/DashboardSkeleton';
+import Spinner from './components/Spinner';
 import { cacheGet, cacheSet } from './cache';
 import './App.css';
 
@@ -173,6 +174,13 @@ export default function App() {
     setCargaInicialLista(true);
   }, [cargaInicialLista, vista, cargandoPeriodos, cargandoResumen, periodo, razonSocial, evoluciones]);
 
+  // Mientras se traen los datos del período elegido se muestra el anillo en lugar del contenido:
+  // así al cambiar de mes o de razón social aparece todo junto y ya completo, en vez de ver cifras
+  // del mes anterior mezcladas con las nuevas a medida que llegan.
+  const cargandoDashboard = razonSocial !== 'Consolidado'
+    && !!periodo
+    && (cargandoPeriodos || cargandoResumen || !evoluciones[razonSocial]);
+
   function irA(nuevaVista) {
     setVistaElegidaPorUsuario(true);
     setVista(nuevaVista);
@@ -266,31 +274,35 @@ export default function App() {
               </p>
             )}
 
-            {razonSocial === 'Consolidado' ? (
-              <TablaComparativa />
-            ) : periodo && (cargandoPeriodos || cargandoResumen || !evoluciones[razonSocial]) ? (
-              <ResumenSkeleton />
-            ) : periodo ? (
+            {cargandoDashboard ? (
+              <Spinner />
+            ) : (
               <>
-                <ResumenCards resumen={resumen} />
-                {visible('dashboard.resultado-fiscal') && (
-                  <ResultadoFiscalMensual
-                    razonSocial={razonSocial}
-                    meses={evoluciones[razonSocial]}
-                    periodoSeleccionado={periodoSeleccionado}
-                    onSeleccionarPeriodo={irAPeriodo}
-                    onDeseleccionar={deseleccionarPeriodo}
-                  />
+                {razonSocial === 'Consolidado' ? (
+                  <TablaComparativa />
+                ) : periodo ? (
+                  <>
+                    <ResumenCards resumen={resumen} />
+                    {visible('dashboard.resultado-fiscal') && (
+                      <ResultadoFiscalMensual
+                        razonSocial={razonSocial}
+                        meses={evoluciones[razonSocial]}
+                        periodoSeleccionado={periodoSeleccionado}
+                        onSeleccionarPeriodo={irAPeriodo}
+                        onDeseleccionar={deseleccionarPeriodo}
+                      />
+                    )}
+                  </>
+                ) : null}
+
+                {visible('dashboard.ventas-compras') && (
+                  <VentasCompras resumen={resumen} ventasCompras={ventasCompras} />
+                )}
+
+                {visible('dashboard.evolucion') && (
+                  Object.keys(evoluciones).length === 0 ? <EvolucionSkeleton /> : <EvolucionChart evoluciones={evoluciones} />
                 )}
               </>
-            ) : null}
-
-            {visible('dashboard.ventas-compras') && (
-              periodo && cargandoResumen ? <VentasComprasSkeleton /> : <VentasCompras resumen={resumen} ventasCompras={ventasCompras} />
-            )}
-
-            {visible('dashboard.evolucion') && (
-              Object.keys(evoluciones).length === 0 ? <EvolucionSkeleton /> : <EvolucionChart evoluciones={evoluciones} />
             )}
           </>
         )}

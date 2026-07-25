@@ -273,7 +273,10 @@ export async function conciliacionInternaExterna(razonSocial) {
   const externos = await all('SELECT periodo, iva_ventas, iva_compras, diferencia, fecha_presentacion FROM posiciones_historicas WHERE razon_social = ? ORDER BY periodo', [razonSocial]);
   const externoPorPeriodo = new Map(externos.map((e) => [e.periodo, e]));
 
-  const periodos = [...new Set([...internoPorPeriodo.keys(), ...externoPorPeriodo.keys()])].sort();
+  // Solo los períodos que tienen lado interno: un mes con DDJJ cargada pero sin comprobantes de
+  // ARCA (ej. los ejercicios viejos que se cargaron a mano) no se puede comparar contra nada — se
+  // vería como "Interno $0 vs Externo <millones>", una diferencia falsa que solo agrega ruido.
+  const periodos = [...internoPorPeriodo.keys()].sort();
 
   const filas = periodos.map((periodo) => {
     const i = internoPorPeriodo.get(periodo);

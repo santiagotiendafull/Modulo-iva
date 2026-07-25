@@ -32,7 +32,10 @@ export default function Configuracion() {
   }, []);
 
   async function toggle(clave) {
-    const nuevoValor = !visibilidad[clave];
+    // El tilde se dibuja con `!== false`, así que el valor nuevo se calcula igual: si se usara
+    // `!visibilidad[clave]`, una clave sin guardar (undefined) se vería tildada pero al tocarla
+    // pediría "true" de nuevo, y el tilde no se podría sacar nunca.
+    const nuevoValor = visibilidad[clave] === false;
     setGuardando(clave);
     setVisibilidad((v) => ({ ...v, [clave]: nuevoValor }));
     try {
@@ -67,7 +70,9 @@ export default function Configuracion() {
           ve todo, aunque él mismo apague algo acá.
         </p>
         <div className="visibilidad-lista">
-          {visibilidad && Object.entries(ETIQUETAS_VISIBILIDAD).map(([clave, etiqueta]) => (
+          {/* Se listan las claves que devuelve el backend, no una copia local: si el frontend
+              inventara una que el backend no conoce, el interruptor no haría nada al tocarlo. */}
+          {visibilidad && Object.keys(visibilidad).map((clave) => (
             <label key={clave} className="visibilidad-item">
               <input
                 type="checkbox"
@@ -75,7 +80,7 @@ export default function Configuracion() {
                 disabled={guardando === clave}
                 onChange={() => toggle(clave)}
               />
-              {etiqueta}
+              {ETIQUETAS_VISIBILIDAD[clave] ?? clave}
             </label>
           ))}
         </div>

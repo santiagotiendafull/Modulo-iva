@@ -135,6 +135,45 @@ html { scrollbar-gutter: stable; }
   gap: 24px;
 }
 
+/* Filtros: un único estilo para todos los selects y buscadores de la app (dashboard, cargar datos,
+   proveedores, conciliación), para que no haya tres variantes distintas de lo mismo. */
+select,
+.buscador-proveedores {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-h);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+select {
+  padding-right: 30px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238b897f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+}
+.buscador-proveedores {
+  font-weight: 400;
+  min-width: 240px;
+}
+.buscador-proveedores::placeholder { color: var(--text-muted); }
+select:hover,
+.buscador-proveedores:hover { border-color: var(--text-muted); }
+select:focus-visible,
+.buscador-proveedores:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+select:disabled { opacity: 0.55; cursor: default; }
+
 /* Anillo de carga inicial: al entrar a la app se espera todo el dashboard junto en vez de ir
    revelando cada bloque a medida que llega. */
 .carga-inicial { display: flex; align-items: center; justify-content: center; min-height: 55vh; }
@@ -405,15 +444,8 @@ html { scrollbar-gutter: stable; }
 .resultado-fiscal h3 { font-size: 15px; }
 .resultado-fiscal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .resultado-fiscal-anio { font-size: 13px; }
-.resultado-fiscal td.separador-anio {
-  padding: 8px 0 4px;
-  border-top: 2px solid var(--border-strong, var(--border));
-  border-bottom: none;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  letter-spacing: 0.4px;
-}
+/* Corte de ejercicio: el primer mes de un año nuevo se separa del anterior con una línea marcada. */
+.resultado-fiscal tbody tr.fila-abre-anio td { border-top: 2px solid var(--text-h); }
 .resultado-fiscal table { font-size: 13.5px; }
 .resultado-fiscal th {
   text-align: right;
@@ -789,17 +821,6 @@ html { scrollbar-gutter: stable; }
 }
 
 .proveedores-controles { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
-.buscador-proveedores {
-  padding: 9px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  color: var(--text-h);
-  font-size: 13.5px;
-  min-width: 240px;
-}
-.buscador-proveedores:focus { outline: 2px solid var(--accent-border); outline-offset: 1px; }
-
 .tabla-proveedores { table-layout: fixed; }
 .tabla-proveedores .col-proveedor { width: auto; }
 .tabla-proveedores .col-cuit { width: 150px; }
@@ -1178,34 +1199,10 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
 }
 .hojas-lista label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-h); cursor: pointer; }
 .hojas-lista input { width: 15px; height: 15px; cursor: pointer; }
-.pendientes-import-controles select {
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text-h);
-  font-size: 13px;
-  max-width: 320px;
-}
+.pendientes-import-controles select { max-width: 320px; }
 .pendientes-acciones { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 4px 0 14px; }
 .pendientes-pdf-proveedor { display: flex; align-items: center; gap: 8px; }
-.pendientes-pdf-proveedor select {
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text-h);
-  font-size: 13px;
-  max-width: 240px;
-}
-.conciliacion-acciones select {
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text-h);
-  font-size: 13px;
-}
+.pendientes-pdf-proveedor select { max-width: 240px; }
 
 .top-proveedores-lista { display: flex; flex-direction: column; gap: 6px; list-style: none; }
 .top-proveedores-lista li {

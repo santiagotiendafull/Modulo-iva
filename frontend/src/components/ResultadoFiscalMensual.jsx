@@ -14,6 +14,10 @@ export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSele
   useEffect(() => {
     if (!periodoSeleccionado) return;
     function alTocarFuera(e) {
+      // El selector de período de arriba también cambia de mes: si contara como "tocar fuera",
+      // deseleccionar volvería al último período en el mousedown y el click de la flecha navegaría
+      // desde ahí, con lo que nunca se podía pasar del anteúltimo mes.
+      if (e.target.closest?.('.selector')) return;
       if (cajaRef.current && !cajaRef.current.contains(e.target)) {
         onDeseleccionar?.();
       }
@@ -55,16 +59,17 @@ export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSele
             </tr>
           </thead>
           <tbody>
-            {ordenados.flatMap((m, i) => {
+            {ordenados.map((m, i) => {
               const aFavor = m.saldo_tecnico >= 0;
               const origen = origenInfo(m);
               const seleccionada = m.periodo === periodoSeleccionado;
-              const anio = m.periodo.slice(0, 4);
-              const cambioDeAnio = i > 0 && anio !== ordenados[i - 1].periodo.slice(0, 4);
-              const filaDatos = (
+              // Primer mes de un año nuevo: lleva una línea más marcada arriba para separar
+              // visualmente un ejercicio del otro.
+              const abreAnio = i > 0 && m.periodo.slice(0, 4) !== ordenados[i - 1].periodo.slice(0, 4);
+              return (
                 <tr
                   key={m.periodo}
-                  className={seleccionada ? 'fila-seleccionada' : ''}
+                  className={`${seleccionada ? 'fila-seleccionada' : ''} ${abreAnio ? 'fila-abre-anio' : ''}`.trim()}
                   onClick={() => onSeleccionarPeriodo?.(m.periodo)}
                 >
                   <td className="col-concepto">
@@ -80,11 +85,6 @@ export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSele
                   </td>
                 </tr>
               );
-              if (!cambioDeAnio) return [filaDatos];
-              return [
-                <tr key={`${anio}-separador`}><td colSpan={6} className="separador-anio">{anio}</td></tr>,
-                filaDatos,
-              ];
             })}
           </tbody>
         </table>

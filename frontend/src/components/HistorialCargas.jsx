@@ -29,6 +29,7 @@ export default function HistorialCargas({ refreshKey }) {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [filtroRazonSocial, setFiltroRazonSocial] = useState('todas');
+  const [filtroAnio, setFiltroAnio] = useState('todos');
   const [filtroPeriodo, setFiltroPeriodo] = useState('todos');
 
   useEffect(() => {
@@ -50,11 +51,25 @@ export default function HistorialCargas({ refreshKey }) {
   const ultimoRecibidos = { NT: ultimoPeriodoConDatos(filas, 'NT', 'recibidos'), Target: ultimoPeriodoConDatos(filas, 'Target', 'recibidos') };
   const ultimoEmitidos = { NT: ultimoPeriodoConDatos(filas, 'NT', 'emitidos'), Target: ultimoPeriodoConDatos(filas, 'Target', 'emitidos') };
 
-  const periodosDisponibles = [...new Set(filas.map((f) => f.periodo))].sort();
+  const aniosDisponibles = [...new Set(filas.map((f) => f.periodo.slice(0, 4)))].sort().reverse();
+  // El desplegable de meses solo ofrece los del año elegido: con varios ejercicios cargados, la
+  // lista completa se vuelve inmanejable.
+  const periodosDisponibles = [...new Set(
+    filas.filter((f) => filtroAnio === 'todos' || f.periodo.startsWith(filtroAnio)).map((f) => f.periodo)
+  )].sort();
   const filasFiltradas = filas.filter((f) =>
     (filtroRazonSocial === 'todas' || f.razon_social === filtroRazonSocial) &&
+    (filtroAnio === 'todos' || f.periodo.startsWith(filtroAnio)) &&
     (filtroPeriodo === 'todos' || f.periodo === filtroPeriodo)
   );
+
+  function cambiarAnio(anio) {
+    setFiltroAnio(anio);
+    // Si el mes elegido no pertenece al año nuevo, la tabla quedaría vacía sin motivo aparente.
+    if (anio !== 'todos' && filtroPeriodo !== 'todos' && !filtroPeriodo.startsWith(anio)) {
+      setFiltroPeriodo('todos');
+    }
+  }
 
   return (
     <div className="historial-cargas">
@@ -64,13 +79,21 @@ export default function HistorialCargas({ refreshKey }) {
           <p className="historial-nota">Control de qué está cargado y qué falta, por razón social y período.</p>
         </div>
         <div className="historial-filtros">
-          <select className="periodo-select" value={filtroRazonSocial} onChange={(e) => setFiltroRazonSocial(e.target.value)}>
+          <select value={filtroRazonSocial} onChange={(e) => setFiltroRazonSocial(e.target.value)}>
             <option value="todas">Todas las razones sociales</option>
             <option value="NT">NT</option>
             <option value="Target">Target</option>
           </select>
-          <select className="periodo-select" value={filtroPeriodo} onChange={(e) => setFiltroPeriodo(e.target.value)}>
-            <option value="todos">Todos los períodos</option>
+          {aniosDisponibles.length > 1 && (
+            <select value={filtroAnio} onChange={(e) => cambiarAnio(e.target.value)}>
+              <option value="todos">Todos los años</option>
+              {aniosDisponibles.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+          )}
+          <select value={filtroPeriodo} onChange={(e) => setFiltroPeriodo(e.target.value)}>
+            <option value="todos">Todos los meses</option>
             {periodosDisponibles.map((p) => (
               <option key={p} value={p}>{periodoLabelCompleto(p)}</option>
             ))}
