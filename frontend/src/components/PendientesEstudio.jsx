@@ -345,6 +345,11 @@ export default function PendientesEstudio({ razonSocial }) {
               <button type="button" className="btn-cargar-todo" onClick={generarPdfEnvio} disabled={enviando || seleccionados.size === 0}>
                 {enviando ? 'Generando…' : `Enviar al estudio: generar PDF con los ${seleccionados.size} listos`}
               </button>
+              {ordenadas.length > 0 && (
+                <button type="button" className="btn-desglose" onClick={toggleSeleccionTodas}>
+                  {todasVisiblesSeleccionadas ? 'Destildar todos los visibles' : 'Tildar todos los visibles'}
+                </button>
+              )}
               {proveedoresConPendientes.length > 0 && (
                 <div className="pendientes-pdf-proveedor">
                   <select value={proveedorPdf} onChange={(e) => setProveedorPdf(e.target.value)}>
@@ -364,10 +369,6 @@ export default function PendientesEstudio({ razonSocial }) {
               <table className="tabla-conciliacion-comprobantes">
                 <thead>
                   <tr>
-                    <th className="col-encontrado">
-                      <input type="checkbox" checked={todasVisiblesSeleccionadas} onChange={toggleSeleccionTodas} aria-label="Tildar todos como encontrados" />
-                      <span>Encontrado</span>
-                    </th>
                     <th>Fecha</th>
                     <th className="col-concepto">Comprobante</th>
                     <th>PDV</th>
@@ -386,9 +387,6 @@ export default function PendientesEstudio({ razonSocial }) {
                       className={`fila-clickeable ${seleccionados.has(f.id) ? 'fila-seleccionada' : ''}`}
                       onClick={() => toggleSeleccion(f.id)}
                     >
-                      <td onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" checked={seleccionados.has(f.id)} onChange={() => toggleSeleccion(f.id)} />
-                      </td>
                       <td>{fechaLabel(f.fecha)}</td>
                       <td className="col-concepto" title={f.tipo_comprobante}>{f.tipo_comprobante}</td>
                       <td>{f.pdv}</td>
@@ -401,7 +399,7 @@ export default function PendientesEstudio({ razonSocial }) {
                     </tr>
                   ))}
                   {ordenadas.length === 0 && (
-                    <tr><td colSpan={10} className="bloque-nota">
+                    <tr><td colSpan={9} className="bloque-nota">
                       {filas.length === 0 ? `No hay comprobantes pendientes cargados para ${razonSocial}.` : 'Ningún comprobante coincide con la búsqueda.'}
                     </td></tr>
                   )}
