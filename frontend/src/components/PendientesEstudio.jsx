@@ -141,6 +141,13 @@ export default function PendientesEstudio({ razonSocial }) {
   const proveedoresConPendientes = [...new Map(filas.map((f) => [f.cuit_contraparte, { cuit: f.cuit_contraparte, denominacion: f.denominacion_contraparte }])).values()]
     .sort((a, b) => normalizar(a.denominacion).localeCompare(normalizar(b.denominacion)));
 
+  const topProveedores = pendientes?.kpis.top_proveedores ?? [];
+  const totalIvaTopProveedores = topProveedores.reduce((acc, p) => acc + p.iva, 0);
+  const totalIvaPendiente = pendientes?.kpis.total_iva ?? 0;
+  const porcentajeTopProveedores = totalIvaPendiente > 0
+    ? `${((totalIvaTopProveedores / totalIvaPendiente) * 100).toFixed(1)}%`
+    : '—';
+
   // Tildar/destildar queda guardado al toque (papel de trabajo: se va marcando a lo largo del mes a
   // medida que se encuentra cada comprobante físico). No lo saca de pendientes ni lo manda al
   // estudio — eso recién pasa al generar el PDF de envío.
@@ -289,6 +296,22 @@ export default function PendientesEstudio({ razonSocial }) {
                   </li>
                 ))}
               </ul>
+              <div className="top-proveedores-resumen">
+                <div className="top-proveedores-resumen-fila">
+                  <span>
+                    Total IVA de estos {pendientes.kpis.top_proveedores.length} proveedores
+                    <InfoTooltip texto="Suma del IVA pendiente de los proveedores de la lista de arriba." />
+                  </span>
+                  <span className="top-proveedores-resumen-valor">{money(totalIvaTopProveedores)}</span>
+                </div>
+                <div className="top-proveedores-resumen-fila">
+                  <span>
+                    % sobre el Total IVA pendiente
+                    <InfoTooltip texto="Cuánto representa ese total sobre el Total IVA pendiente de todos los proveedores, no solo el top 5." />
+                  </span>
+                  <span className="top-proveedores-resumen-valor">{porcentajeTopProveedores}</span>
+                </div>
+              </div>
             </div>
           )}
 

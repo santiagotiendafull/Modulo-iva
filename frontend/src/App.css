@@ -1218,6 +1218,18 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
 .top-proveedores-cantidad { color: var(--text-muted); font-size: 12px; margin-left: auto; margin-right: 12px; }
 .top-proveedores-iva { font-weight: 700; color: var(--text-h); font-variant-numeric: tabular-nums; }
 
+.top-proveedores-resumen { margin-top: 4px; padding-top: 10px; border-top: 2px solid var(--border); }
+.top-proveedores-resumen-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.top-proveedores-resumen-valor { font-weight: 700; color: var(--text-h); font-variant-numeric: tabular-nums; }
+
 .envios-lista { display: flex; flex-direction: column; gap: 8px; }
 .envio-item { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
 .envio-item-header {
