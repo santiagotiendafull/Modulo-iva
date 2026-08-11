@@ -1,13 +1,27 @@
 import { useState } from 'react';
 import EnvioEstudio from './EnvioEstudio';
 import ConciliacionInternaExterna from './ConciliacionInternaExterna';
+import { cacheGet, cacheSet } from '../cache';
 
 const RAZONES = ['Target', 'NT'];
+const CACHE_KEY_SUBVISTA = 'conciliacion-subvista';
+const CACHE_KEY_RAZON_SOCIAL = 'conciliacion-razon-social';
 
 export default function Conciliacion({ rol, visible }) {
   const puedeVerPendientes = rol !== 'gerente' && (visible ? visible('conciliacion.comprobantes') : true);
-  const [subVista, setSubVista] = useState('interna-externa');
-  const [razonSocial, setRazonSocial] = useState('Target');
+  // Recordar la sub-pestaña y razón social elegidas para que al volver a Conciliación (después de
+  // navegar a otra sección) siga donde estaba, en vez de resetear siempre a Target/Interna vs Externa.
+  const [subVista, setSubVistaState] = useState(() => cacheGet(CACHE_KEY_SUBVISTA) ?? 'interna-externa');
+  const [razonSocial, setRazonSocialState] = useState(() => cacheGet(CACHE_KEY_RAZON_SOCIAL) ?? 'Target');
+
+  function setSubVista(v) {
+    setSubVistaState(v);
+    cacheSet(CACHE_KEY_SUBVISTA, v);
+  }
+  function setRazonSocial(r) {
+    setRazonSocialState(r);
+    cacheSet(CACHE_KEY_RAZON_SOCIAL, r);
+  }
 
   const subVistaEfectiva = puedeVerPendientes ? subVista : 'interna-externa';
 
