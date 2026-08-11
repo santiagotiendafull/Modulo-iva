@@ -4,11 +4,34 @@ import { money } from '../format';
 import InfoTooltip from './InfoTooltip';
 
 const EXPLICACION = {
-  ventas: "Suma el IVA de todas las ventas: Facturas A, B y C. Las Notas de Crédito restan.",
-  compras: "Suma el IVA solo de Facturas A y resta las Notas de Crédito A, que revierten una compra que ya tomó crédito fiscal. Excluye proveedores 'No corresponde'. Incluye el crédito fiscal del Formulario 931 y el crédito fiscal manual, si hay cargados.",
+  ventas: "Grupo A: Facturas A, B y C, tiques y recibos de venta suman al Débito Fiscal. Grupo B: las Notas de Crédito de ventas NO restan acá — se exponen como restitución en el Crédito Fiscal, metodología DDJJ de ARCA (prohibido netear en origen).",
+  compras: "Grupo C: suma el IVA solo de Facturas A (las únicas que toman crédito fiscal válido; B/C no cuentan) al Crédito Fiscal Computable. Grupo D: las Notas de Crédito A NO restan acá — se exponen como restitución en el Débito Fiscal. Excluye proveedores 'No corresponde'. Incluye el crédito fiscal del Formulario 931 y el crédito fiscal manual, si hay cargados.",
 };
 
 const LABEL_ALICUOTA = { '10.5': '10,5%', '21': '21%', '27': '27%' };
+
+function TablaAlicuotas({ filas }) {
+  return (
+    <table className="desglose-alicuotas-tabla">
+      <thead>
+        <tr>
+          <th className="col-concepto">Alícuota</th>
+          <th>Neto gravado</th>
+          <th>IVA</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filas.map(([tasa, v]) => (
+          <tr key={tasa}>
+            <td className="col-concepto">{LABEL_ALICUOTA[tasa] ?? `${tasa}%`}</td>
+            <td>{money(v.neto_gravado)}</td>
+            <td>{money(v.iva)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 function DesgloseAlicuotas({ razonSocial, periodo, tipo }) {
   const [abierto, setAbierto] = useState(false);
@@ -30,9 +53,9 @@ function DesgloseAlicuotas({ razonSocial, periodo, tipo }) {
     setAbierto((v) => !v);
   }
 
-  const filas = datos
-    ? Object.entries(datos).filter(([, v]) => Math.abs(v.neto_gravado) > 0.005 || Math.abs(v.iva) > 0.005)
-    : [];
+  const conMonto = ([, v]) => Math.abs(v.neto_gravado) > 0.005 || Math.abs(v.iva) > 0.005;
+  const filasOperaciones = datos ? Object.entries(datos.operaciones).filter(conMonto) : [];
+  const filasRestitucion = datos ? Object.entries(datos.restitucion).filter(conMonto) : [];
 
   return (
     <div className="desglose-alicuotas">
@@ -43,28 +66,20 @@ function DesgloseAlicuotas({ razonSocial, periodo, tipo }) {
         <div className="desglose-alicuotas-panel">
           {cargando && <p className="desglose-cargando">Cargando…</p>}
           {error && <p className="error-banner">{error}</p>}
-          {!cargando && !error && filas.length === 0 && (
+          {!cargando && !error && filasOperaciones.length === 0 && filasRestitucion.length === 0 && (
             <p className="desglose-vacio">Sin montos gravados a 10,5%, 21% o 27% en este período.</p>
           )}
-          {!cargando && filas.length > 0 && (
-            <table className="desglose-alicuotas-tabla">
-              <thead>
-                <tr>
-                  <th className="col-concepto">Alícuota</th>
-                  <th>Neto gravado</th>
-                  <th>IVA</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filas.map(([tasa, v]) => (
-                  <tr key={tasa}>
-                    <td className="col-concepto">{LABEL_ALICUOTA[tasa] ?? `${tasa}%`}</td>
-                    <td>{money(v.neto_gravado)}</td>
-                    <td>{money(v.iva)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {!cargando && filasOperaciones.length > 0 && (
+            <>
+              <p className="desglose-alicuotas-subtitulo">Operaciones</p>
+              <TablaAlicuotas filas={filasOperaciones} />
+            </>
+          )}
+          {!cargando && filasRestitucion.length > 0 && (
+            <>
+              <p className="desglose-alicuotas-subtitulo">Restitución (Notas de Crédito)</p>
+              <TablaAlicuotas filas={filasRestitucion} />
+            </>
           )}
         </div>
       )}
@@ -75,13 +90,17 @@ function DesgloseAlicuotas({ razonSocial, periodo, tipo }) {
 function Bloque({ titulo, totalIva, detalle, esCompras, razonSocial, periodo, credito931, credito931Estimado }) {
   const filas = detalle?.filas ?? [];
   const totales = detalle?.totales;
-  const netoGravado = totales?.neto_gravado ?? filas.reduce((acc, f) => acc + (f.neto_gravado || 0), 0);
+
+  const labelOperaciones = esCompras ? 'Operaciones de Compras' : 'Operaciones de Ventas';
+  const labelRestitucion = esCompras
+    ? 'Notas de Crédito de Compras → Restitución de Crédito Fiscal'
+    : 'Notas de Crédito de Ventas → Restitución del Débito Fiscal';
 
   const porTipo = new Map();
   for (const f of filas) {
     const key = f.tipo_comprobante || 'Sin tipo';
-    const actual = porTipo.get(key) || { n: 0, excluido: f.excluido, resta: f.resta };
-    porTipo.set(key, { n: actual.n + 1, excluido: f.excluido, resta: f.resta });
+    const actual = porTipo.get(key) || { n: 0, excluido: f.excluido, restitucion: f.restitucion };
+    porTipo.set(key, { n: actual.n + 1, excluido: f.excluido, restitucion: f.restitucion });
   }
 
   return (
@@ -99,8 +118,28 @@ function Bloque({ titulo, totalIva, detalle, esCompras, razonSocial, periodo, cr
         <>
           <div className="bloque-stats">
             <span>{filas.length} comprobantes</span>
-            <span>Neto gravado: {money(netoGravado)}</span>
           </div>
+          <table className="bloque-desglose-grupos desglose-alicuotas-tabla">
+            <thead>
+              <tr>
+                <th className="col-concepto"></th>
+                <th>Neto gravado</th>
+                <th>IVA</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="col-concepto">{labelOperaciones}</td>
+                <td>{money(totales?.operaciones_neto_gravado ?? 0)}</td>
+                <td>{money(totales?.operaciones_iva ?? 0)}</td>
+              </tr>
+              <tr className="fila-restitucion">
+                <td className="col-concepto">{labelRestitucion}</td>
+                <td>{money(totales?.restitucion_neto_gravado ?? 0)}</td>
+                <td>{money(totales?.restitucion_iva ?? 0)}</td>
+              </tr>
+            </tbody>
+          </table>
           {credito931 > 0 && (
             <p className="bloque-credito-931">
               Incluye {money(credito931)} de crédito fiscal por Formulario 931
@@ -114,7 +153,7 @@ function Bloque({ titulo, totalIva, detalle, esCompras, razonSocial, periodo, cr
               {[...porTipo.entries()].map(([tipo, info]) => {
                 let clase = '';
                 if (info.excluido) clase = 'tipo-excluido';
-                else if (info.resta) clase = 'tipo-resta';
+                else if (info.restitucion) clase = 'tipo-resta';
                 else if (esCompras) clase = 'tipo-computa';
                 return (
                   <li key={tipo} className={clase}>
@@ -150,7 +189,7 @@ export default function VentasCompras({ resumen, ventasCompras }) {
   return (
     <div className="ventas-compras">
       <Bloque
-        titulo="IVA Ventas"
+        titulo="Débito Fiscal"
         totalIva={resumen.iva_ventas}
         detalle={ventasDetalle}
         esCompras={false}
@@ -158,7 +197,7 @@ export default function VentasCompras({ resumen, ventasCompras }) {
         periodo={resumen.periodo}
       />
       <Bloque
-        titulo="IVA Compras"
+        titulo="Crédito Fiscal"
         totalIva={resumen.iva_compras}
         detalle={comprasDetalle}
         esCompras={true}

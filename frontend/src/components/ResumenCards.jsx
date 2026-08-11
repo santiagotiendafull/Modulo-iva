@@ -33,19 +33,19 @@ export default function ResumenCards({ resumen }) {
       <div className="resumen-cards">
         <div className="card">
           <div className="card-label">
-            IVA Ventas {etiqueta}
-            <InfoTooltip texto="Suma el IVA de todas las ventas: Facturas A, B y C (el vendedor debe el débito fiscal aunque el comprobante no discrimine el IVA). Las Notas de Crédito restan." />
+            Débito Fiscal {etiqueta}
+            <InfoTooltip texto="Facturas A, B y C emitidas (el vendedor debe el débito fiscal aunque el comprobante no discrimine el IVA) más la restitución de crédito fiscal por Notas de Crédito de compras A recibidas. Las Notas de Crédito de ventas NO restan acá: se exponen como restitución en el Crédito Fiscal (metodología DDJJ de ARCA, prohibido netear en origen)." />
           </div>
           <div className="card-value">{money(resumen.iva_ventas)}</div>
         </div>
         <div className="card">
           <div className="card-label">
-            IVA Compras {etiqueta}
+            Crédito Fiscal {etiqueta}
             {resumen.credito_931_estimado > 0 && <span className="origen-pill-mini origen-estimado">931 estimado</span>}
             <InfoTooltip texto={
               resumen.credito_931_estimado > 0
-                ? `Suma el IVA solo de Facturas A y resta las Notas de Crédito A (revierten una compra que ya tomó crédito fiscal). Excluye proveedores 'No corresponde'. Incluye el crédito fiscal manual si hay cargado. Todavía no se cargó el Formulario 931 de este período: se está estimando con el crédito del mes anterior (${money(resumen.credito_931_estimado)}) hasta que se cargue el propio.`
-                : "Suma el IVA solo de Facturas A (las únicas que toman crédito fiscal válido; B/C no cuentan) y resta las Notas de Crédito A, que revierten una compra que ya tomó crédito fiscal. Excluye compras a proveedores marcados 'No corresponde'. Incluye el crédito fiscal del Formulario 931 y el crédito fiscal manual, si hay cargados."
+                ? `Facturas A recibidas (las únicas que toman crédito fiscal válido; B/C no cuentan) más la restitución de débito fiscal por Notas de Crédito de ventas emitidas. Excluye proveedores 'No corresponde'. Incluye el crédito fiscal manual si hay cargado. Todavía no se cargó el Formulario 931 de este período: se está estimando con el crédito del mes anterior (${money(resumen.credito_931_estimado)}) hasta que se cargue el propio.`
+                : "Facturas A recibidas (las únicas que toman crédito fiscal válido; B/C no cuentan) más la restitución de débito fiscal por Notas de Crédito de ventas emitidas (metodología DDJJ de ARCA, prohibido netear en origen). Excluye compras a proveedores marcados 'No corresponde'. Incluye el crédito fiscal del Formulario 931 y el crédito fiscal manual, si hay cargados."
             } />
           </div>
           <div className="card-value">{money(resumen.iva_compras)}</div>
@@ -53,10 +53,10 @@ export default function ResumenCards({ resumen }) {
         <div className="card">
           <div className="card-label">
             Diferencia del mes
-            <InfoTooltip texto="IVA Ventas menos IVA Compras de este período." />
+            <InfoTooltip texto="Débito Fiscal menos Crédito Fiscal de este período." />
           </div>
           <div className={`card-value ${resumen.diferencia >= 0 ? 'neg' : 'pos'}`}>{money(resumen.diferencia)}</div>
-          <div className="card-hint">IVA Ventas − IVA Compras</div>
+          <div className="card-hint">Débito Fiscal − Crédito Fiscal</div>
         </div>
       </div>
       <div className="resumen-cards resumen-cards-saldo">

@@ -105,7 +105,7 @@ export default function Proveedores({ onCambio }) {
         <h2>Proveedores</h2>
         <p className="nota">
           Clasificación de proveedores de compras. Un proveedor "No corresponde" no toma crédito fiscal:
-          se resta de IVA Compras todo lo que se le compró, en todas las razones sociales y períodos.
+          se excluye del Crédito Fiscal todo lo que se le compró, en todas las razones sociales y períodos.
         </p>
       </div>
 

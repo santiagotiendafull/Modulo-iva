@@ -1,16 +1,23 @@
 // Reglas de negocio sobre qué comprobantes entran en el cálculo de IVA Ventas/Compras del mes en
-// curso, y con qué signo:
+// curso, y a qué grupo de la DDJJ (F.2002) van.
 //
-// - Compras: solo la letra A discrimina IVA de forma válida para tomar crédito fiscal (Factura A,
-//   sus tiques y variantes con leyenda). Facturas B/C, Recibos, etc. no cuentan. Las Notas de
-//   Crédito A restan (revierten una compra A que sí tomó crédito fiscal); notas de crédito de
-//   otras letras no cuentan, porque nunca hubo crédito fiscal que revertir.
-// - Ventas: todas las letras suman (A, B y C): el vendedor debe el débito fiscal sobre cualquier
-//   venta, discrimine o no el IVA en el comprobante. Las Notas de Crédito, de cualquier letra,
-//   restan: revierten la venta que reversan.
-// - Remitos, resúmenes de datos e informes de cierre (Z) no son comprobantes de venta/compra —
-//   quedan afuera del cálculo aunque aparezcan en el export de ARCA, porque contarlos duplicaría
-//   el importe ya facturado en el comprobante real.
+// REGLA DE ORO: PROHIBIDO NETEAR EN ORIGEN. Una Nota de Crédito no resta de su propio rubro —
+// según la normativa de AFIP, se expone como un incremento en el rubro CONTRARIO (restitución):
+//
+// - Grupo A — Ventas positivas (Fact. A/B/C, tiques, recibos): suman al Débito Fiscal. El vendedor
+//   debe el débito fiscal sobre cualquier venta, discrimine o no el IVA en el comprobante.
+// - Grupo B — Notas de Crédito de Ventas (cualquier letra): NO restan del Débito Fiscal. Suman
+//   como "Restitución del Débito Fiscal" al CRÉDITO FISCAL (cambian de bando).
+// - Grupo C — Compras positivas: solo la letra A discrimina IVA de forma válida para tomar crédito
+//   fiscal (Factura A, sus tiques y variantes con leyenda). Facturas B/C, Recibos, etc. no cuentan.
+//   Suman al Crédito Fiscal.
+// - Grupo D — Notas de Crédito de Compras A (notas de crédito de otras letras no cuentan, porque
+//   nunca hubo crédito fiscal que revertir): NO restan del Crédito Fiscal. Suman como "Restitución
+//   de Crédito Fiscal" al DÉBITO FISCAL (cambian de bando).
+//
+// Remitos, resúmenes de datos e informes de cierre (Z) no son comprobantes de venta/compra —
+// quedan afuera del cálculo aunque aparezcan en el export de ARCA, porque contarlos duplicaría
+// el importe ya facturado en el comprobante real.
 //
 // La letra y si es Nota de Crédito se determinan por el código AFIP (tabla oficial de "Tipos de
 // Comprobante"), no por el texto: algunos exports de ARCA solo traen el código numérico ("8", sin
@@ -93,26 +100,18 @@ function esDocumentoNoTransaccional(tipoComprobante) {
   return infoCodigo(tipoComprobante)?.cuenta === false;
 }
 
-// Devuelve 1 (suma), -1 (resta) o 0 (no participa del cálculo).
-export function signoComprobante(tipo, tipoComprobante) {
-  if (esDocumentoNoTransaccional(tipoComprobante)) return 0;
+// Devuelve el grupo de destino en la DDJJ: 'A' | 'B' | 'C' | 'D', o null si no participa del cálculo.
+export function grupoComprobante(tipo, tipoComprobante) {
+  if (esDocumentoNoTransaccional(tipoComprobante)) return null;
 
   const esNC = esNotaDeCredito(tipoComprobante);
 
   if (tipo === 'compra') {
-    if (letraDe(tipoComprobante) !== 'A') return 0;
-    return esNC ? -1 : 1;
+    if (letraDe(tipoComprobante) !== 'A') return null;
+    return esNC ? 'D' : 'C';
   }
 
-  return esNC ? -1 : 1;
-}
-
-export function contribuyeAlCalculo(tipo, tipoComprobante) {
-  return signoComprobante(tipo, tipoComprobante) !== 0;
-}
-
-export function esResta(tipo, tipoComprobante) {
-  return signoComprobante(tipo, tipoComprobante) < 0;
+  return esNC ? 'B' : 'A';
 }
 
 export function motivoExclusion(tipo, tipoComprobante) {

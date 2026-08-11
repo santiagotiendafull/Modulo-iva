@@ -134,7 +134,7 @@ export default function ConciliacionInternaExterna({ razonSocial }) {
             </div>
 
             <GrupoComparacion
-              titulo="IVA Ventas"
+              titulo="Débito Fiscal"
               subtituloInterno="de Mis Comprobantes ARCA"
               subtituloExterno="DDJJ presentada por estudio"
               interno={filaSeleccionada.interno?.iva_ventas}
@@ -142,7 +142,7 @@ export default function ConciliacionInternaExterna({ razonSocial }) {
               diferencia={filaSeleccionada.diferencia_ventas}
             />
             <GrupoComparacion
-              titulo="IVA Compras"
+              titulo="Crédito Fiscal"
               subtituloInterno="de Mis Comprobantes ARCA"
               subtituloExterno="DDJJ presentada por estudio"
               interno={filaSeleccionada.interno?.iva_compras}
@@ -151,8 +151,8 @@ export default function ConciliacionInternaExterna({ razonSocial }) {
               credito931={filaSeleccionada.interno?.credito_931}
             />
             <GrupoComparacion
-              titulo="Diferencia (Ventas − Compras)"
-              subtituloInterno="Ventas − Compras"
+              titulo="Diferencia (Débito − Crédito)"
+              subtituloInterno="Débito − Crédito"
               subtituloExterno="Según DDJJ"
               interno={filaSeleccionada.interno?.diferencia}
               externo={filaSeleccionada.externo?.diferencia}
@@ -190,8 +190,8 @@ function TablaInternaExterna({ filas, razonSocial, periodoSeleccionado, onSelecc
           <thead>
             <tr>
               <th rowSpan={2} className="col-concepto">Período</th>
-              <th colSpan={3}>IVA Ventas</th>
-              <th colSpan={3} className="col-grupo-separador">IVA Compras</th>
+              <th colSpan={3}>Débito Fiscal</th>
+              <th colSpan={3} className="col-grupo-separador">Crédito Fiscal</th>
             </tr>
             <tr>
               <th>Interno</th>

@@ -3,7 +3,7 @@
 // todavía no tiene un export propio así que se carga a mano con columnas fijas (ver CAMPOS_INTERNA).
 import ExcelJS from 'exceljs';
 import { db, all, run } from '../db.js';
-import { signoComprobante } from './clasificacionComprobantes.js';
+import { grupoComprobante } from './clasificacionComprobantes.js';
 import { cuitsNoCorresponde } from './proveedoresService.js';
 import { creditoFiscal931PorPeriodo } from './formulario931Service.js';
 
@@ -232,33 +232,43 @@ export async function limpiarInterna(razonSocial) {
 // (posiciones_historicas). Como esa tabla solo guarda el mes en curso (una vez que un período tiene
 // DDJJ, ARCA ya no se vuelve a cargar ahí), la comparación solo es posible mientras el período
 // todavía no tenía DDJJ al momento de cargarlo.
+// Misma regla de grupos que posicionService.js (ver clasificacionComprobantes.js): no se netean las
+// Notas de Crédito en origen, van como restitución al rubro contrario. iva_ventas/iva_compras
+// quedan así definidos igual que el Débito/Crédito Fiscal Total que reporta la DDJJ (Externo, ver
+// abajo), en vez de "ventas netas de NC" — antes no eran del todo comparables por este motivo.
 export async function posicionInternaPorPeriodo(razonSocial) {
   const rows = await all('SELECT periodo, tipo, tipo_comprobante, cuit_contraparte, iva, fecha FROM comprobantes WHERE razon_social = ?', [razonSocial]);
   const noCorresponde = await cuitsNoCorresponde();
 
+  const nuevoAcc = (periodo) => ({ periodo, debito_fiscal_facturado: 0, restitucion_debito_fiscal: 0, credito_fiscal_computable: 0, restitucion_credito_fiscal: 0, credito_931: 0, ultima_fecha: null });
+
   const porPeriodo = new Map();
   for (const r of rows) {
-    if (!porPeriodo.has(r.periodo)) {
-      porPeriodo.set(r.periodo, { periodo: r.periodo, iva_ventas: 0, iva_compras: 0, credito_931: 0, ultima_fecha: null });
-    }
+    if (!porPeriodo.has(r.periodo)) porPeriodo.set(r.periodo, nuevoAcc(r.periodo));
     const acc = porPeriodo.get(r.periodo);
     if (r.fecha && (!acc.ultima_fecha || r.fecha > acc.ultima_fecha)) acc.ultima_fecha = r.fecha;
 
     if (r.tipo === 'compra' && noCorresponde.has(r.cuit_contraparte)) continue;
-    const signo = signoComprobante(r.tipo, r.tipo_comprobante);
-    if (signo === 0) continue;
-    if (r.tipo === 'venta') acc.iva_ventas += signo * r.iva;
-    else acc.iva_compras += signo * r.iva;
+    const grupo = grupoComprobante(r.tipo, r.tipo_comprobante);
+    if (!grupo) continue;
+    if (grupo === 'A') acc.debito_fiscal_facturado += r.iva;
+    else if (grupo === 'B') acc.restitucion_debito_fiscal += r.iva;
+    else if (grupo === 'C') acc.credito_fiscal_computable += r.iva;
+    else if (grupo === 'D') acc.restitucion_credito_fiscal += r.iva;
   }
 
   // Mismo crédito fiscal adicional que en el Dashboard (Suma de Rem. 10 × porcentaje configurable),
   // sumado acá también para que "Interno" sea comparable con el resultado fiscal real.
   const creditos931 = await creditoFiscal931PorPeriodo(razonSocial);
   for (const [periodo, credito] of creditos931) {
-    if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, { periodo, iva_ventas: 0, iva_compras: 0, credito_931: 0, ultima_fecha: null });
+    if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, nuevoAcc(periodo));
     const acc = porPeriodo.get(periodo);
-    acc.iva_compras += credito;
     acc.credito_931 = credito;
+  }
+
+  for (const acc of porPeriodo.values()) {
+    acc.iva_ventas = acc.debito_fiscal_facturado + acc.restitucion_credito_fiscal;
+    acc.iva_compras = acc.credito_fiscal_computable + acc.restitucion_debito_fiscal + acc.credito_931;
   }
 
   return [...porPeriodo.values()].sort((a, b) => a.periodo.localeCompare(b.periodo));

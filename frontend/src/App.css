@@ -510,6 +510,9 @@ select:disabled { opacity: 0.55; cursor: default; }
 .bloque-computa-nota { font-size: 11.5px; color: var(--good); margin-bottom: 10px; }
 .bloque-computa-nota.bloque-computa-nota-resta { color: #b57d00; }
 .bloque-credito-931 { font-size: 11.5px; color: var(--accent); margin-bottom: 10px; }
+.bloque-desglose-grupos { width: 100%; margin: 4px 0 12px; }
+.bloque-desglose-grupos .fila-restitucion td { color: #b57d00; font-weight: 600; }
+.desglose-alicuotas-subtitulo { font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-muted); font-weight: 600; margin: 10px 0 4px; }
 .bloque-tipos { list-style: none; padding: 0; margin: 0; font-size: 13px; }
 .bloque-tipos li { display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px solid var(--border); color: var(--text); }
 .bloque-tipos li.tipo-excluido { color: var(--text-muted); }

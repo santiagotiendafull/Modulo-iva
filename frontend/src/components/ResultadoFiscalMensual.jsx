@@ -51,8 +51,8 @@ export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSele
           <thead>
             <tr>
               <th className="col-concepto">Período</th>
-              <th>IVA Ventas</th>
-              <th>IVA Compras</th>
+              <th>Débito Fiscal</th>
+              <th>Crédito Fiscal</th>
               <th>Saldo Técnico</th>
               <th>Saldo anterior</th>
               <th className="col-total">Saldo Resultante</th>

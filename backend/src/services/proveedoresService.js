@@ -3,7 +3,18 @@
 // global por CUIT (no depende de la razón social) y queda guardada para que los próximos Excel que
 // se suban ya la respeten automáticamente.
 import { all, run } from '../db.js';
-import { signoComprobante } from './clasificacionComprobantes.js';
+import { grupoComprobante } from './clasificacionComprobantes.js';
+
+// Este archivo muestra volumen de compras NETO por proveedor (para decidir si corresponde o no
+// tomarle crédito fiscal) — a diferencia del cálculo de la DDJJ (posicionService.js), acá SÍ tiene
+// sentido netear la NC contra la compra del mismo proveedor: es "cuánto le compramos neto", no la
+// exposición fiscal de Débito/Crédito. Grupo C (Factura A) suma, Grupo D (NC A) resta.
+function signoCompra(tipoComprobante) {
+  const grupo = grupoComprobante('compra', tipoComprobante);
+  if (grupo === 'C') return 1;
+  if (grupo === 'D') return -1;
+  return 0;
+}
 
 export async function establecerEstado(cuit, estado) {
   if (!cuit) throw new Error('falta el CUIT del proveedor');
@@ -42,7 +53,7 @@ export async function listarProveedores() {
     const acc = porCuit.get(r.cuit);
     if (r.denominacion) acc.denominacion = r.denominacion;
     acc.razonesSociales.add(r.razon_social);
-    const signo = signoComprobante('compra', r.tipo_comprobante);
+    const signo = signoCompra(r.tipo_comprobante);
     if (signo === 0) continue; // solo se cuenta lo que hoy toma crédito fiscal (Factura A y sus NC)
     acc.comprobantes += 1;
     acc.neto_gravado += signo * r.neto_gravado;
@@ -82,7 +93,7 @@ export async function comprasExcluidasPorProveedor() {
   let totalIva = 0;
   for (const r of rows) {
     if (!noCorresponde.has(r.cuit)) continue;
-    const signo = signoComprobante('compra', r.tipo_comprobante);
+    const signo = signoCompra(r.tipo_comprobante);
     if (signo === 0) continue; // ya estaba afuera del cálculo por otro motivo (no es lo que se "pierde" acá)
     const neto = signo * r.neto_gravado;
     const iva = signo * r.iva;

@@ -10,9 +10,9 @@ const CACHE_KEY_PERIODOS = 'consolidado-periodos';
 const cacheKeyDatos = (periodo) => `consolidado-comparativa-${periodo}`;
 
 const TOOLTIP_FILA = {
-  'IVA Ventas': 'Suma el IVA de todas las ventas: Facturas A, B y C. Las Notas de Crédito restan.',
-  'IVA Compras': "Suma el IVA solo de Facturas A. Excluye proveedores 'No corresponde'. Incluye crédito fiscal del Formulario 931 y manual, si hay cargados.",
-  'Diferencia': 'IVA Ventas menos IVA Compras del período.',
+  'Débito Fiscal': 'Facturas A, B y C emitidas más la restitución de crédito fiscal por Notas de Crédito de compras A. Las NC de ventas NO restan acá — metodología DDJJ de ARCA.',
+  'Crédito Fiscal': "Facturas A recibidas más la restitución de débito fiscal por Notas de Crédito de ventas. Excluye proveedores 'No corresponde'. Incluye crédito fiscal del Formulario 931 y manual, si hay cargados.",
+  'Diferencia': 'Débito Fiscal menos Crédito Fiscal del período.',
   'Saldo anterior': 'Saldo técnico que quedó al cierre del mes anterior.',
   'Saldo técnico': 'Saldo anterior más la diferencia de este mes: a favor del contribuyente o a pagar a ARCA.',
 };
@@ -101,8 +101,8 @@ export default function TablaComparativa() {
             </tr>
           </thead>
           <tbody>
-            {fila('IVA Ventas', target?.iva_ventas, nt?.iva_ventas, total.iva_ventas)}
-            {fila('IVA Compras', target?.iva_compras, nt?.iva_compras, total.iva_compras)}
+            {fila('Débito Fiscal', target?.iva_ventas, nt?.iva_ventas, total.iva_ventas)}
+            {fila('Crédito Fiscal', target?.iva_compras, nt?.iva_compras, total.iva_compras)}
             {fila('Diferencia', target?.diferencia, nt?.diferencia, total.diferencia, true)}
             {fila('Saldo anterior', target?.saldo_tecnico_anterior, nt?.saldo_tecnico_anterior, total.saldo_tecnico_anterior)}
             {fila('Saldo técnico', target?.saldo_tecnico, nt?.saldo_tecnico, total.saldo_tecnico, true)}

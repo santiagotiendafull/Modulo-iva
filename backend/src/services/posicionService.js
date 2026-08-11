@@ -2,7 +2,7 @@
 // curso (Mis Comprobantes) en una sola línea de tiempo por razón social, para reutilizar tanto en
 // el resumen de un período puntual como en la vista de evolución mensual.
 import { all } from '../db.js';
-import { signoComprobante, contribuyeAlCalculo, esResta, motivoExclusion } from './clasificacionComprobantes.js';
+import { grupoComprobante, motivoExclusion } from './clasificacionComprobantes.js';
 import { cuitsNoCorresponde } from './proveedoresService.js';
 import { creditoFiscal931, creditoFiscal931PorPeriodo, existeFormulario931 } from './formulario931Service.js';
 import { creditoManual, creditoManualPorPeriodo } from './creditoFiscalManualService.js';
@@ -22,12 +22,26 @@ function periodosHistoricos(razonSocial) {
   return all('SELECT * FROM posiciones_historicas WHERE razon_social = ? ORDER BY periodo', [razonSocial]);
 }
 
-// Notas de crédito y Factura B/C (solo compras) quedan afuera o restan del cálculo según el caso:
-// ver clasificacionComprobantes.js para el detalle de la regla de negocio. Además, ninguna compra
-// a un proveedor marcado "no corresponde" toma crédito fiscal (proveedoresService.js), y el crédito
-// fiscal adicional del Formulario 931 (Suma de Rem. 10 × porcentaje configurable) se suma al IVA
-// Compras del período en el que se cargó (formulario931Service.js), igual que el crédito fiscal
-// manual cargado a mano en Cargar Datos (creditoFiscalManualService.js).
+// Clasifica cada comprobante por grupo (A/B/C/D, ver clasificacionComprobantes.js) y arma el
+// Débito Fiscal Total y el Crédito Fiscal Total como los expone la DDJJ de ARCA: sin netear las
+// Notas de Crédito contra su propio rubro — Grupo B (NC Ventas) suma al Crédito Fiscal, Grupo D
+// (NC Compras A) suma al Débito Fiscal. Además, ninguna compra a un proveedor marcado "no
+// corresponde" toma crédito fiscal (proveedoresService.js), y el crédito fiscal adicional del
+// Formulario 931 (Suma de Rem. 10 × porcentaje configurable) y el crédito fiscal manual cargado a
+// mano en Cargar Datos son "Ajustes Externos" que suman directo al Crédito Fiscal Total.
+function nuevoAcumulador(periodo) {
+  return {
+    periodo,
+    debito_fiscal_facturado: 0, // Grupo A
+    restitucion_debito_fiscal: 0, // Grupo B (NC Ventas) — suma al Crédito Fiscal
+    credito_fiscal_computable: 0, // Grupo C
+    restitucion_credito_fiscal: 0, // Grupo D (NC Compras A) — suma al Débito Fiscal
+    credito_931: 0,
+    credito_931_estimado: 0,
+    credito_manual: 0,
+  };
+}
+
 async function periodosComprobantes(razonSocial) {
   const rows = await all('SELECT periodo, tipo, tipo_comprobante, cuit_contraparte, iva FROM comprobantes WHERE razon_social = ?', [razonSocial]);
   const noCorresponde = await cuitsNoCorresponde();
@@ -35,19 +49,20 @@ async function periodosComprobantes(razonSocial) {
   const porPeriodo = new Map();
   for (const r of rows) {
     if (r.tipo === 'compra' && noCorresponde.has(r.cuit_contraparte)) continue;
-    const signo = signoComprobante(r.tipo, r.tipo_comprobante);
-    if (signo === 0) continue;
-    if (!porPeriodo.has(r.periodo)) porPeriodo.set(r.periodo, { periodo: r.periodo, iva_ventas: 0, iva_compras: 0, credito_931: 0, credito_931_estimado: 0, credito_manual: 0 });
+    const grupo = grupoComprobante(r.tipo, r.tipo_comprobante);
+    if (!grupo) continue;
+    if (!porPeriodo.has(r.periodo)) porPeriodo.set(r.periodo, nuevoAcumulador(r.periodo));
     const acc = porPeriodo.get(r.periodo);
-    if (r.tipo === 'venta') acc.iva_ventas += signo * r.iva;
-    else acc.iva_compras += signo * r.iva;
+    if (grupo === 'A') acc.debito_fiscal_facturado += r.iva;
+    else if (grupo === 'B') acc.restitucion_debito_fiscal += r.iva;
+    else if (grupo === 'C') acc.credito_fiscal_computable += r.iva;
+    else if (grupo === 'D') acc.restitucion_credito_fiscal += r.iva;
   }
 
   const creditos931 = await creditoFiscal931PorPeriodo(razonSocial);
   for (const [periodo, credito] of creditos931) {
-    if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, { periodo, iva_ventas: 0, iva_compras: 0, credito_931: 0, credito_931_estimado: 0, credito_manual: 0 });
+    if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, nuevoAcumulador(periodo));
     const acc = porPeriodo.get(periodo);
-    acc.iva_compras += credito;
     acc.credito_931 = credito;
   }
 
@@ -55,18 +70,23 @@ async function periodosComprobantes(razonSocial) {
   for (const [periodo, acc] of porPeriodo) {
     if (creditos931.has(periodo)) continue;
     const estimado = creditos931.get(periodoAnterior(periodo));
-    if (estimado) {
-      acc.iva_compras += estimado;
-      acc.credito_931_estimado = estimado;
-    }
+    if (estimado) acc.credito_931_estimado = estimado;
   }
 
   const creditosManuales = await creditoManualPorPeriodo(razonSocial);
   for (const [periodo, credito] of creditosManuales) {
-    if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, { periodo, iva_ventas: 0, iva_compras: 0, credito_931: 0, credito_931_estimado: 0, credito_manual: 0 });
+    if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, nuevoAcumulador(periodo));
     const acc = porPeriodo.get(periodo);
-    acc.iva_compras += credito;
     acc.credito_manual = credito;
+  }
+
+  // TOTAL DÉBITO FISCAL = Grupo A + Grupo D. TOTAL CRÉDITO FISCAL = Grupo C + Grupo B + Ajustes
+  // externos (931 + manual). Se exponen con los nombres iva_ventas/iva_compras por compatibilidad
+  // con los históricos (posiciones_historicas), que ya representan exactamente esto.
+  for (const acc of porPeriodo.values()) {
+    acc.iva_ventas = acc.debito_fiscal_facturado + acc.restitucion_credito_fiscal;
+    acc.iva_compras = acc.credito_fiscal_computable + acc.restitucion_debito_fiscal
+      + acc.credito_931 + acc.credito_931_estimado + acc.credito_manual;
   }
 
   return [...porPeriodo.values()].sort((a, b) => a.periodo.localeCompare(b.periodo));
@@ -124,6 +144,10 @@ export async function lineaDeTiempo(razonSocial) {
         origen: 'actual',
         iva_ventas: c.iva_ventas,
         iva_compras: c.iva_compras,
+        debito_fiscal_facturado: c.debito_fiscal_facturado,
+        restitucion_debito_fiscal: c.restitucion_debito_fiscal,
+        credito_fiscal_computable: c.credito_fiscal_computable,
+        restitucion_credito_fiscal: c.restitucion_credito_fiscal,
         credito_931: c.credito_931,
         credito_931_estimado: c.credito_931_estimado,
         credito_manual: c.credito_manual,
@@ -167,6 +191,10 @@ function consolidarPeriodo(nt, target, periodo) {
     origen: [nt?.origen, target?.origen].filter(Boolean).join('+') || null,
     iva_ventas: suma('iva_ventas'),
     iva_compras: suma('iva_compras'),
+    debito_fiscal_facturado: suma('debito_fiscal_facturado'),
+    restitucion_debito_fiscal: suma('restitucion_debito_fiscal'),
+    credito_fiscal_computable: suma('credito_fiscal_computable'),
+    restitucion_credito_fiscal: suma('restitucion_credito_fiscal'),
     credito_931: suma('credito_931'),
     credito_931_estimado: suma('credito_931_estimado'),
     credito_manual: suma('credito_manual'),
@@ -233,30 +261,39 @@ export async function comparativa(periodo) {
   };
 }
 
+// Anota cada comprobante con su grupo (A/B/C/D) y separa los totales en "Operaciones" (grupo A o
+// C, según tipo) y "Restitución" (grupo B o D — Notas de Crédito que suman al rubro contrario, ver
+// clasificacionComprobantes.js). Nada se resta: la regla de oro es prohibido netear en origen.
 function anotarYSumar(rows, noCorresponde) {
   const anotadas = rows.map((r) => {
     const proveedorVetado = r.tipo === 'compra' && noCorresponde.has(r.cuit_contraparte);
-    const excluido = proveedorVetado || !contribuyeAlCalculo(r.tipo, r.tipo_comprobante);
-    const resta = !excluido && esResta(r.tipo, r.tipo_comprobante);
+    const grupo = proveedorVetado ? null : grupoComprobante(r.tipo, r.tipo_comprobante);
+    const excluido = proveedorVetado || grupo == null;
+    const restitucion = grupo === 'B' || grupo === 'D';
     const motivo_exclusion = proveedorVetado
       ? 'Proveedor marcado "No corresponde": no toma crédito fiscal.'
       : (excluido ? motivoExclusion(r.tipo, r.tipo_comprobante) : null);
-    return { ...r, excluido, resta, proveedor_vetado: proveedorVetado, motivo_exclusion };
+    return { ...r, excluido, grupo, restitucion, proveedor_vetado: proveedorVetado, motivo_exclusion };
   });
   const incluidas = anotadas.filter((r) => !r.excluido);
-  const signo = (r) => (r.resta ? -1 : 1);
+  const operaciones = incluidas.filter((r) => !r.restitucion);
+  const restituciones = incluidas.filter((r) => r.restitucion);
+  const sumaIva = (rs) => rs.reduce((acc, r) => acc + r.iva, 0);
+  const sumaNeto = (rs) => rs.reduce((acc, r) => acc + r.neto_gravado, 0);
   return {
     filas: anotadas,
     totales: {
-      iva: incluidas.reduce((acc, r) => acc + signo(r) * r.iva, 0),
-      neto_gravado: incluidas.reduce((acc, r) => acc + signo(r) * r.neto_gravado, 0),
+      operaciones_iva: sumaIva(operaciones),
+      operaciones_neto_gravado: sumaNeto(operaciones),
+      restitucion_iva: sumaIva(restituciones),
+      restitucion_neto_gravado: sumaNeto(restituciones),
       excluidos: anotadas.length - incluidas.length,
     },
   };
 }
 
-// Desglose del monto gravado e IVA por alícuota (10,5% / 21% / 27%), sumando lo que corresponda
-// sumar y restando lo que corresponda restar (mismo criterio que el total de iva_ventas/iva_compras).
+// Desglose del monto gravado e IVA por alícuota (10,5% / 21% / 27%), separado en Operaciones
+// (grupo A o C) y Restitución (grupo B o D) — mismo criterio que anotarYSumar, sin netear.
 export async function desgloseAlicuotas(razonSocial, periodo, tipo) {
   const rows = await all(`
     SELECT tipo_comprobante, cuit_contraparte, neto_gravado_105, iva_105, neto_gravado_21, iva_21, neto_gravado_27, iva_27
@@ -265,25 +302,28 @@ export async function desgloseAlicuotas(razonSocial, periodo, tipo) {
   `, [razonSocial, periodo, tipo]);
   const noCorresponde = tipo === 'compra' ? await cuitsNoCorresponde() : new Set();
 
-  const alicuotas = {
+  const alicuotasVacias = () => ({
     '10.5': { neto_gravado: 0, iva: 0 },
     '21': { neto_gravado: 0, iva: 0 },
     '27': { neto_gravado: 0, iva: 0 },
-  };
+  });
+  const operaciones = alicuotasVacias();
+  const restitucion = alicuotasVacias();
 
   for (const r of rows) {
     if (noCorresponde.has(r.cuit_contraparte)) continue;
-    const signo = signoComprobante(tipo, r.tipo_comprobante);
-    if (signo === 0) continue;
-    alicuotas['10.5'].neto_gravado += signo * r.neto_gravado_105;
-    alicuotas['10.5'].iva += signo * r.iva_105;
-    alicuotas['21'].neto_gravado += signo * r.neto_gravado_21;
-    alicuotas['21'].iva += signo * r.iva_21;
-    alicuotas['27'].neto_gravado += signo * r.neto_gravado_27;
-    alicuotas['27'].iva += signo * r.iva_27;
+    const grupo = grupoComprobante(tipo, r.tipo_comprobante);
+    if (!grupo) continue;
+    const destino = (grupo === 'B' || grupo === 'D') ? restitucion : operaciones;
+    destino['10.5'].neto_gravado += r.neto_gravado_105;
+    destino['10.5'].iva += r.iva_105;
+    destino['21'].neto_gravado += r.neto_gravado_21;
+    destino['21'].iva += r.iva_21;
+    destino['27'].neto_gravado += r.neto_gravado_27;
+    destino['27'].iva += r.iva_27;
   }
 
-  return alicuotas;
+  return { operaciones, restitucion };
 }
 
 export async function ventasCompras(razonSocial, periodo) {
@@ -321,7 +361,7 @@ export async function ventasCompras(razonSocial, periodo) {
     ventas: ventas.filas,
     ventasTotales: ventas.totales,
     compras: compras.filas,
-    comprasTotales: { ...compras.totales, iva: compras.totales.iva + credito931 + creditoManualPeriodo },
+    comprasTotales: compras.totales,
     credito_931: credito931,
     credito_931_estimado: credito931Estimado,
     credito_manual: creditoManualPeriodo,

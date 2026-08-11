@@ -415,7 +415,7 @@ export default function CargarDatos({ onDatosActualizados, visible }) {
             </span>
             <div>
               <h3>Crédito fiscal manual</h3>
-              <p>Un monto fijo por período para comprobantes que no aparecen en ARCA pero se pueden tomar como crédito fiscal. Se suma al IVA Compras de ese período.</p>
+              <p>Un monto fijo por período para comprobantes que no aparecen en ARCA pero se pueden tomar como crédito fiscal. Se suma al Crédito Fiscal de ese período.</p>
             </div>
           </div>
 
