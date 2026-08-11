@@ -17,10 +17,51 @@ function sinAcentos(s) {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
-function fechaAIso(ddmmyyyy) {
-  if (!ddmmyyyy || !/^\d{2}\/\d{2}\/\d{4}$/.test(ddmmyyyy)) return null;
-  const [d, m, y] = ddmmyyyy.split('/');
-  return `${y}-${m}-${d}`;
+// El Excel del estudio no siempre viene con la fecha en un formato prolijo tipo Excel: al ser una
+// planilla que arma el estudio a mano, aparecen variantes (1 o 2 dígitos de día/mes, año de 2 o 4
+// dígitos, separador "-" en vez de "/", ISO "aaaa-mm-dd") y a veces la celda quedó como un número de
+// serie de Excel en vez de una fecha real. Antes solo se aceptaba "dd/mm/aaaa" exacto — cualquier
+// otra cosa quedaba sin fecha (celda vacía en la tabla). Se prueban varios formatos antes de
+// rendirse, para no perder la fecha de un comprobante solo porque el estudio la tipeó distinto.
+function fechaAIso(valorCrudo) {
+  if (valorCrudo == null || valorCrudo === '') return null;
+  const texto = String(valorCrudo).trim();
+
+  // dd/mm/aaaa o d/m/aaaa (con o sin ceros a la izquierda), separador "/" o "-".
+  const conSeparador = texto.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (conSeparador) {
+    let [, d, m, y] = conSeparador;
+    if (y.length === 2) y = `20${y}`; // el estudio a veces tipea el año con 2 dígitos
+    const dia = d.padStart(2, '0');
+    const mes = m.padStart(2, '0');
+    if (Number(dia) >= 1 && Number(dia) <= 31 && Number(mes) >= 1 && Number(mes) <= 12) {
+      return `${y}-${mes}-${dia}`;
+    }
+  }
+
+  // aaaa-mm-dd (ISO), por si la celda ya venía en ese formato.
+  const iso = texto.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) {
+    const [, y, m, d] = iso;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+
+  // Número de serie de Excel (días desde el 30/12/1899, con el bug del año bisiesto 1900 que Excel
+  // arrastra a propósito por compatibilidad con Lotus 1-2-3): pasa esto cuando ExcelJS entrega la
+  // celda como número en vez de Date. Rango razonable: años ~2015 a ~2035.
+  const serie = texto.match(/^\d{5}(\.\d+)?$/);
+  if (serie) {
+    const n = parseFloat(texto);
+    if (n >= 42000 && n <= 50000) {
+      const fecha = new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 86400000);
+      const y = fecha.getUTCFullYear();
+      const m = String(fecha.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(fecha.getUTCDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+  }
+
+  return null;
 }
 
 // Acepta tanto los encabezados de la hoja "Faltantes" (con Estado/Motivo) como los de "Mis
@@ -107,8 +148,7 @@ function parsearHoja(sheet, razonSocial, archivoOrigen) {
     const cuit = normalizarCuit(val('cuit'));
     if (!cuit) return;
 
-    const fechaRaw = val('fecha');
-    const fecha = fechaRaw ? fechaAIso(String(fechaRaw).trim()) : null;
+    const fecha = fechaAIso(val('fecha'));
 
     filas.push({
       razon_social: razonSocial,

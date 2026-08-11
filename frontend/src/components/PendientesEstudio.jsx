@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
-import { money, fechaLabel } from '../format';
+import { money, fechaLabel, tipoComprobanteLabel } from '../format';
 import InfoTooltip from './InfoTooltip';
 
 const RAZONES = ['Target', 'NT'];
@@ -388,7 +388,7 @@ export default function PendientesEstudio({ razonSocial }) {
                       onClick={() => toggleSeleccion(f.id)}
                     >
                       <td>{fechaLabel(f.fecha)}</td>
-                      <td className="col-concepto" title={f.tipo_comprobante}>{f.tipo_comprobante}</td>
+                      <td className="col-concepto" title={f.tipo_comprobante}>{tipoComprobanteLabel(f.tipo_comprobante)}</td>
                       <td>{f.pdv}</td>
                       <td>{f.numero}</td>
                       <td>{f.cuit_contraparte}</td>
@@ -439,7 +439,7 @@ export default function PendientesEstudio({ razonSocial }) {
                             {envio.items.map((it) => (
                               <tr key={it.id}>
                                 <td>{fechaLabel(it.fecha)}</td>
-                                <td className="col-concepto">{it.tipo_comprobante}</td>
+                                <td className="col-concepto" title={it.tipo_comprobante}>{tipoComprobanteLabel(it.tipo_comprobante)}</td>
                                 <td>{it.pdv}</td>
                                 <td>{it.numero}</td>
                                 <td className="col-concepto">{it.denominacion_contraparte || '—'}</td>

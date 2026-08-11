@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
-import { money, fechaLabel } from '../format';
+import { money, fechaLabel, tipoComprobanteLabel } from '../format';
 import InfoTooltip from './InfoTooltip';
 
 const periodoActual = () => new Date().toISOString().slice(0, 7);
@@ -133,7 +133,7 @@ export default function ControlMensual({ razonSocial }) {
                     onClick={() => toggleEnviado(f)}
                   >
                     <td>{fechaLabel(f.fecha)}</td>
-                    <td className="col-concepto" title={f.tipo_comprobante || ''}>{f.tipo_comprobante || '—'}</td>
+                    <td className="col-concepto" title={f.tipo_comprobante || ''}>{tipoComprobanteLabel(f.tipo_comprobante) || '—'}</td>
                     <td>{f.origen === 'manual' ? 'Manual' : 'ARCA'}</td>
                     <td>{f.pdv || '—'}</td>
                     <td>{f.numero || '—'}</td>

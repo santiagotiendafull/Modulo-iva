@@ -26,6 +26,14 @@ export function fechaLabel(iso) {
   return `${d}/${m}/${y}`;
 }
 
+// "1 - Factura A" -> "Factura A": el código AFIP adelante sirve para matchear internamente pero no
+// hace falta mostrárselo a quien usa la app. Si no viene con ese formato (ej. ya es texto plano), se
+// devuelve tal cual.
+export function tipoComprobanteLabel(tipoComprobante) {
+  if (!tipoComprobante) return tipoComprobante;
+  return String(tipoComprobante).replace(/^\s*\d+\s*-\s*/, '').trim();
+}
+
 // Último día calendario del período 'YYYY-MM', en formato ISO 'YYYY-MM-DD'.
 export function ultimoDiaDelPeriodo(periodo) {
   const [y, m] = periodo.split('-').map(Number);

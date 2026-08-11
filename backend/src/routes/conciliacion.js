@@ -48,6 +48,13 @@ function money(n) {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 }).format(n);
 }
 
+// "1 - Factura A" -> "Factura A": el código AFIP adelante no hace falta en el PDF que acompaña
+// físicamente a los comprobantes.
+function tipoComprobanteLabel(v) {
+  if (!v) return v;
+  return String(v).replace(/^\s*\d+\s*-\s*/, '').trim();
+}
+
 // Tabla genérica en PDF (mismo formato que ya usaba faltantes.pdf), reutilizada por los 3 PDF de
 // comprobantes de esta pantalla: título + subtítulo + tabla con salto de página automático.
 function renderTablaPdf(res, { nombreArchivo, titulo, subtitulo, cols, filas, notaVacio, notaTotal }) {
@@ -141,7 +148,7 @@ router.delete('/interna', soloAdminODev, async (req, res) => {
 
 const COLS_COMPROBANTES = [
   { label: 'Fecha', width: 65, key: 'fecha', formato: (v) => fechaLabel(v) || v || '' },
-  { label: 'Comprobante', width: 130, key: 'tipo_comprobante' },
+  { label: 'Comprobante', width: 130, key: 'tipo_comprobante', formato: tipoComprobanteLabel },
   { label: 'PDV', width: 45, key: 'pdv' },
   { label: 'Número', width: 70, key: 'numero' },
   { label: 'CUIT', width: 100, key: 'cuit_contraparte' },
