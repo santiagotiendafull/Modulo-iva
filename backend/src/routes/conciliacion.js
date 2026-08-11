@@ -17,6 +17,19 @@ import {
   pendientesPorProveedor,
   marcarListo,
 } from '../services/pendientesEstudioService.js';
+import {
+  listarProveedoresFrecuentes,
+  listarComprobantesManuales,
+  agregarComprobanteManual,
+  marcarEnviadoManual,
+  eliminarComprobanteManual,
+} from '../services/comprobantesManualesService.js';
+import {
+  obtenerControlMensual,
+  marcarEnviadoArca,
+  comprobantesMarcadosParaPdf,
+  compararEnvio,
+} from '../services/controlEnvioMensualService.js';
 import { requireRole } from '../middleware/auth.js';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const router = Router();
@@ -238,6 +251,92 @@ router.get('/pendientes-estudio/pdf-proveedor', soloAdminODev, async (req, res) 
     notaVacio: 'No hay comprobantes pendientes de este proveedor.',
     notaTotal: (n) => `Total de comprobantes pendientes: ${n}`,
   });
+});
+
+// --- Comprobantes manuales (peajes, estaciones de servicio, etc. — no aparecen en ARCA) --------
+
+router.get('/comprobantes-manuales/proveedores', soloAdminODev, async (req, res) => {
+  res.json(await listarProveedoresFrecuentes());
+});
+
+router.get('/comprobantes-manuales', soloAdminODev, async (req, res) => {
+  const { razon_social: razonSocial, periodo } = req.query;
+  if (!['NT', 'Target'].includes(razonSocial)) {
+    return res.status(400).json({ error: 'falta razon_social (NT o Target)' });
+  }
+  try {
+    res.json(await listarComprobantesManuales(razonSocial, periodo || null));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/comprobantes-manuales', soloAdminODev, async (req, res) => {
+  const { razon_social: razonSocial, fecha, proveedor, tipo_comprobante: tipoComprobante, numero, monto } = req.body;
+  try {
+    const fila = await agregarComprobanteManual({ razonSocial, fecha, proveedor, tipoComprobante, numero, monto });
+    res.json(fila);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.patch('/comprobantes-manuales/:id/enviado', soloAdminODev, async (req, res) => {
+  await marcarEnviadoManual(req.params.id, !!req.body.enviado);
+  res.json({ ok: true });
+});
+
+router.delete('/comprobantes-manuales/:id', soloAdminODev, async (req, res) => {
+  await eliminarComprobanteManual(req.params.id);
+  res.json({ ok: true });
+});
+
+// --- Control mensual (checklist propio del mes, independiente de lo que pida el estudio) --------
+
+router.get('/control-mensual', soloAdminODev, async (req, res) => {
+  const { razon_social: razonSocial, periodo } = req.query;
+  try {
+    res.json(await obtenerControlMensual(razonSocial, periodo));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.patch('/control-mensual/marcar', soloAdminODev, async (req, res) => {
+  const { razon_social: razonSocial, cuit_contraparte: cuit, pdv, numero, enviado } = req.body;
+  try {
+    await marcarEnviadoArca(razonSocial, cuit, pdv, numero, !!enviado);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/control-mensual/pdf', soloAdminODev, async (req, res) => {
+  const { razon_social: razonSocial, periodo } = req.query;
+  try {
+    const filas = await comprobantesMarcadosParaPdf(razonSocial, periodo);
+    renderTablaPdf(res, {
+      nombreArchivo: `control-mensual-${razonSocial}-${periodo}.pdf`,
+      titulo: `Control mensual — comprobantes marcados para enviar — ${razonSocial}`,
+      subtitulo: `Período ${periodo}. Generado el ${new Date().toLocaleDateString('es-AR')}.`,
+      cols: COLS_COMPROBANTES,
+      filas,
+      notaVacio: 'No hay comprobantes marcados para este período.',
+      notaTotal: (n) => `Total de comprobantes marcados: ${n}`,
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/control-mensual/comparar', soloAdminODev, async (req, res) => {
+  const { razon_social: razonSocial, periodo } = req.query;
+  try {
+    res.json(await compararEnvio(razonSocial, periodo));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 export default router;

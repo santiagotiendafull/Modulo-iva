@@ -164,6 +164,32 @@ export const api = {
     `comprobantes-pendientes-${nombreProveedor || cuit}.pdf`
   ),
 
+  proveedoresManuales: () => req('/conciliacion/comprobantes-manuales/proveedores'),
+  comprobantesManuales: (razonSocial, periodo) => req(`/conciliacion/comprobantes-manuales?razon_social=${razonSocial}${periodo ? `&periodo=${periodo}` : ''}`),
+  agregarComprobanteManual: (razonSocial, fecha, proveedor, tipoComprobante, numero, monto) => req('/conciliacion/comprobantes-manuales', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ razon_social: razonSocial, fecha, proveedor, tipo_comprobante: tipoComprobante, numero, monto }),
+  }),
+  marcarEnviadoManual: (id, enviado) => req(`/conciliacion/comprobantes-manuales/${id}/enviado`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enviado }),
+  }),
+  eliminarComprobanteManual: (id) => req(`/conciliacion/comprobantes-manuales/${id}`, { method: 'DELETE' }),
+
+  controlMensual: (razonSocial, periodo) => req(`/conciliacion/control-mensual?razon_social=${razonSocial}&periodo=${periodo}`),
+  marcarEnviadoControlMensual: (razonSocial, cuitContraparte, pdv, numero, enviado) => req('/conciliacion/control-mensual/marcar', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ razon_social: razonSocial, cuit_contraparte: cuitContraparte, pdv, numero, enviado }),
+  }),
+  pdfControlMensual: (razonSocial, periodo) => descargarConAuth(
+    `/conciliacion/control-mensual/pdf?razon_social=${razonSocial}&periodo=${periodo}`,
+    `control-mensual-${razonSocial}-${periodo}.pdf`
+  ),
+  compararEnvio: (razonSocial, periodo) => req(`/conciliacion/control-mensual/comparar?razon_social=${razonSocial}&periodo=${periodo}`),
+
   listarCreditoManual: () => req('/credito-fiscal-manual'),
   agregarCreditoManual: (razonSocial, periodo, monto, descripcion) => req('/credito-fiscal-manual', {
     method: 'POST',

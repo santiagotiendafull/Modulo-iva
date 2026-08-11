@@ -180,3 +180,38 @@ CREATE TABLE IF NOT EXISTS envio_estudio_item (
   iva                       REAL NOT NULL DEFAULT 0,
   total                     REAL NOT NULL DEFAULT 0
 );
+
+-- Comprobantes de compra que no aparecen en ARCA (peajes, estaciones de servicio, etc.), cargados a
+-- mano para el Control mensual. "enviado" es el mismo papel de trabajo que pendientes_estudio.listo
+-- pero acá significa "lo marqué para mandar este mes" — no se archiva ni se borra solo, queda como
+-- un registro permanente que se puede destildar y volver a tildar cuando haga falta.
+CREATE TABLE IF NOT EXISTS comprobantes_manuales (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  razon_social      TEXT NOT NULL CHECK (razon_social IN ('NT', 'Target')),
+  fecha             TEXT NOT NULL,
+  periodo           TEXT NOT NULL, -- 'YYYY-MM' derivado de fecha
+  proveedor         TEXT NOT NULL,
+  tipo_comprobante  TEXT,
+  numero            TEXT,
+  monto             REAL NOT NULL DEFAULT 0,
+  enviado           INTEGER NOT NULL DEFAULT 0,
+  creado_en         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_comprobantes_manuales_periodo ON comprobantes_manuales (razon_social, periodo);
+
+-- Control mensual: marca "enviado" (voy a mandar / ya mandé este mes) sobre comprobantes que ya
+-- están en la tabla comprobantes (ARCA). No se guarda en comprobantes directamente porque esa tabla
+-- se reemplaza entera cada vez que se vuelve a subir el Excel de Mis Comprobantes de ese período —
+-- guardar la marca acá, con una clave natural (cuit + pdv + número) en vez del id de la fila, hace
+-- que sobreviva a un re-import. Siempre editable: no hay "cerrar el mes", se puede destildar cuando
+-- haga falta y el Historial simplemente muestra el estado actual.
+CREATE TABLE IF NOT EXISTS control_envio_mensual (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  razon_social      TEXT NOT NULL CHECK (razon_social IN ('NT', 'Target')),
+  cuit_contraparte  TEXT NOT NULL,
+  pdv               TEXT NOT NULL,
+  numero            TEXT NOT NULL,
+  enviado           INTEGER NOT NULL DEFAULT 0,
+  actualizado_en    TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (razon_social, cuit_contraparte, pdv, numero)
+);

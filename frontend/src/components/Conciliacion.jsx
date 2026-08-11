@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import PendientesEstudio from './PendientesEstudio';
+import EnvioEstudio from './EnvioEstudio';
 import ConciliacionInternaExterna from './ConciliacionInternaExterna';
 
 const RAZONES = ['Target', 'NT'];
@@ -40,7 +40,7 @@ export default function Conciliacion({ rol, visible }) {
       </div>
 
       {subVistaEfectiva === 'pendientes-estudio' ? (
-        <PendientesEstudio razonSocial={razonSocial} />
+        <EnvioEstudio razonSocial={razonSocial} />
       ) : (
         <ConciliacionInternaExterna razonSocial={razonSocial} />
       )}
