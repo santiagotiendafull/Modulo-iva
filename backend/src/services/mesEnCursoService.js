@@ -35,6 +35,7 @@ export const EMITIDOS_COLS = {
   __tipo: 'venta',
   fecha: 0, tipoComprobante: 1, pdv: 2, numeroDesde: 3, numeroHasta: 4,
   tipoDocContraparte: 6, nroDocContraparte: 7, denominacionContraparte: 8,
+  tipoCambio: 9, moneda: 10,
   iva105: 16, netoGravado105: 17, iva21: 18, netoGravado21: 19, iva27: 20, netoGravado27: 21,
   netoGravadoTotal: 22, netoNoGravado: 23, opExentas: 24, otrosTributos: 25,
   totalIva: 26, impTotal: 27,
@@ -44,6 +45,7 @@ export const RECIBIDOS_COLS = {
   __tipo: 'compra',
   fecha: 0, tipoComprobante: 1, pdv: 2, numeroDesde: 3, numeroHasta: 4,
   tipoDocContraparte: 6, nroDocContraparte: 7, denominacionContraparte: 8,
+  tipoCambio: 11, moneda: 12,
   iva105: 18, netoGravado105: 19, iva21: 20, netoGravado21: 21, iva27: 22, netoGravado27: 23,
   netoGravadoTotal: 24, netoNoGravado: 25, opExentas: 26, otrosTributos: 27,
   totalIva: 28, impTotal: 29,
@@ -58,11 +60,24 @@ function normalizarCuit(v) {
   return soloDigitos || null;
 }
 
+// ARCA expone "Mis Comprobantes" en la moneda de emisión del comprobante, no en pesos: un
+// comprobante en USD trae sus columnas de Neto Gravado/IVA/Total en dólares tal cual, con el tipo
+// de cambio del día al lado (columna "Tipo Cambio"). Sin esta conversión, un comprobante en USD se
+// contaba como si esos dólares fueran pesos — subestimando su aporte real por un factor ~1000.
+function factorConversion(moneda, tipoCambio) {
+  const m = (moneda ?? '').toString().trim().toUpperCase();
+  if (!m || m === '$' || m === 'ARS' || m === 'PESOS' || m === 'PESOS ARGENTINOS') return 1;
+  const tc = parseFloat(tipoCambio);
+  return tc > 0 ? tc : 1;
+}
+
 function normalizarFila(fields, cols, { razonSocial, tipo, archivoOrigen }) {
   const fecha = fields[cols.fecha];
   if (!fecha || !/^\d{2}\/\d{2}\/\d{4}$/.test(fecha)) return null;
   const fechaIso = fechaAIso(fecha);
   const num = (v) => (v === undefined || v === '' ? 0 : parseFloat(v));
+  const factor = factorConversion(fields[cols.moneda], fields[cols.tipoCambio]);
+  const numArs = (v) => num(v) * factor;
   return {
     razon_social: razonSocial,
     tipo,
@@ -74,18 +89,18 @@ function normalizarFila(fields, cols, { razonSocial, tipo, archivoOrigen }) {
     numero_hasta: fields[cols.numeroHasta] ?? null,
     cuit_contraparte: normalizarCuit(fields[cols.nroDocContraparte]),
     denominacion_contraparte: fields[cols.denominacionContraparte] || null,
-    neto_gravado: num(fields[cols.netoGravadoTotal]),
-    neto_no_gravado: num(fields[cols.netoNoGravado]),
-    op_exentas: num(fields[cols.opExentas]),
-    otros_tributos: num(fields[cols.otrosTributos]),
-    iva: num(fields[cols.totalIva]),
-    total: num(fields[cols.impTotal]),
-    neto_gravado_105: num(fields[cols.netoGravado105]),
-    iva_105: num(fields[cols.iva105]),
-    neto_gravado_21: num(fields[cols.netoGravado21]),
-    iva_21: num(fields[cols.iva21]),
-    neto_gravado_27: num(fields[cols.netoGravado27]),
-    iva_27: num(fields[cols.iva27]),
+    neto_gravado: numArs(fields[cols.netoGravadoTotal]),
+    neto_no_gravado: numArs(fields[cols.netoNoGravado]),
+    op_exentas: numArs(fields[cols.opExentas]),
+    otros_tributos: numArs(fields[cols.otrosTributos]),
+    iva: numArs(fields[cols.totalIva]),
+    total: numArs(fields[cols.impTotal]),
+    neto_gravado_105: numArs(fields[cols.netoGravado105]),
+    iva_105: numArs(fields[cols.iva105]),
+    neto_gravado_21: numArs(fields[cols.netoGravado21]),
+    iva_21: numArs(fields[cols.iva21]),
+    neto_gravado_27: numArs(fields[cols.netoGravado27]),
+    iva_27: numArs(fields[cols.iva27]),
     categoria: null,
     archivo_origen: archivoOrigen,
   };

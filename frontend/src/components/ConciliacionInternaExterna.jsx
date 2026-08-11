@@ -72,14 +72,23 @@ function GrupoComparacion({ titulo, subtituloInterno, subtituloExterno, interno,
 
 export default function ConciliacionInternaExterna({ razonSocial }) {
   const cacheKeyInicial = `conciliacion-interna-externa-${razonSocial}`;
+  const cacheKeyPeriodoSeleccionado = `conciliacion-interna-externa-periodo-${razonSocial}`;
   const cacheadoInicial = cacheGet(cacheKeyInicial);
   const [datos, setDatos] = useState(cacheadoInicial ?? null);
   const [cargando, setCargando] = useState(!cacheadoInicial);
   const [error, setError] = useState(null);
   const [periodoSeleccionado, setPeriodoSeleccionado] = useState(() => {
     const periodos = cacheadoInicial?.filas?.map((f) => f.periodo) ?? [];
+    const guardado = cacheGet(cacheKeyPeriodoSeleccionado);
+    if (guardado && periodos.includes(guardado)) return guardado;
     return periodos.at(-1) ?? null;
   });
+
+  // Recordar el período elegido para que al volver a este apartado (después de navegar a otro,
+  // ej. Dashboard) siga mostrando el mismo mes en vez de saltar al último.
+  useEffect(() => {
+    if (periodoSeleccionado) cacheSet(cacheKeyPeriodoSeleccionado, periodoSeleccionado);
+  }, [periodoSeleccionado, cacheKeyPeriodoSeleccionado]);
 
   const recargar = useCallback(async () => {
     const key = `conciliacion-interna-externa-${razonSocial}`;

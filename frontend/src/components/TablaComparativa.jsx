@@ -7,6 +7,7 @@ import { cacheGet, cacheSet } from '../cache';
 import InfoTooltip from './InfoTooltip';
 
 const CACHE_KEY_PERIODOS = 'consolidado-periodos';
+const CACHE_KEY_PERIODO_SELECCIONADO = 'consolidado-periodo-seleccionado';
 const cacheKeyDatos = (periodo) => `consolidado-comparativa-${periodo}`;
 
 const TOOLTIP_FILA = {
@@ -40,11 +41,23 @@ function estadoRazon(nombre, p) {
 
 export default function TablaComparativa() {
   const periodosCache = cacheGet(CACHE_KEY_PERIODOS);
+  const periodoGuardado = cacheGet(CACHE_KEY_PERIODO_SELECCIONADO);
   const [periodos, setPeriodos] = useState(periodosCache ?? []);
-  const [periodo, setPeriodo] = useState(periodosCache?.at(-1) ?? null);
-  const [datos, setDatos] = useState(() => (periodosCache ? cacheGet(cacheKeyDatos(periodosCache.at(-1))) ?? null : null));
+  const [periodo, setPeriodo] = useState(() => {
+    if (periodoGuardado && (periodosCache ?? []).includes(periodoGuardado)) return periodoGuardado;
+    return periodosCache?.at(-1) ?? null;
+  });
+  const [datos, setDatos] = useState(() => (periodo ? cacheGet(cacheKeyDatos(periodo)) ?? null : null));
   const [error, setError] = useState(null);
   const [cargandoPeriodos, setCargandoPeriodos] = useState(!periodosCache);
+
+  // Recordar el período elegido para que al volver a este apartado (después de navegar a otro,
+  // ej. Conciliación) siga mostrando el mismo mes en vez de saltar al último — cache.js vive
+  // mientras la pestaña esté abierta, así que sobrevive a que este componente se desmonte.
+  function elegirPeriodo(p) {
+    setPeriodo(p);
+    cacheSet(CACHE_KEY_PERIODO_SELECCIONADO, p);
+  }
 
   useEffect(() => {
     let cancelado = false;
@@ -88,7 +101,7 @@ export default function TablaComparativa() {
     <div className="tabla-comparativa">
       <div className="tabla-comparativa-header">
         <h3>Posición consolidada Target + NT</h3>
-        <SelectorPeriodo periodo={periodo} periodos={periodos} onCambiarPeriodo={setPeriodo} />
+        <SelectorPeriodo periodo={periodo} periodos={periodos} onCambiarPeriodo={elegirPeriodo} />
       </div>
       <div className="tabla-scroll">
         <table>
