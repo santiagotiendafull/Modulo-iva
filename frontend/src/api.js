@@ -165,11 +165,17 @@ export const api = {
   ),
 
   proveedoresManuales: () => req('/conciliacion/comprobantes-manuales/proveedores'),
-  comprobantesManuales: (razonSocial, periodo) => req(`/conciliacion/comprobantes-manuales?razon_social=${razonSocial}${periodo ? `&periodo=${periodo}` : ''}`),
-  agregarComprobanteManual: (razonSocial, fecha, proveedor, tipoComprobante, numero, monto) => req('/conciliacion/comprobantes-manuales', {
+  agregarProveedorManual: (cuit, denominacion) => req('/conciliacion/comprobantes-manuales/proveedores', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ razon_social: razonSocial, fecha, proveedor, tipo_comprobante: tipoComprobante, numero, monto }),
+    body: JSON.stringify({ cuit, denominacion }),
+  }),
+  eliminarProveedorManual: (id) => req(`/conciliacion/comprobantes-manuales/proveedores/${id}`, { method: 'DELETE' }),
+  comprobantesManuales: (razonSocial, periodo) => req(`/conciliacion/comprobantes-manuales?razon_social=${razonSocial}${periodo ? `&periodo=${periodo}` : ''}`),
+  agregarComprobanteManual: ({ razonSocial, fecha, proveedor, cuit, tipoComprobante, numero, iva, monto }) => req('/conciliacion/comprobantes-manuales', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ razon_social: razonSocial, fecha, proveedor, cuit, tipo_comprobante: tipoComprobante, numero, iva, monto }),
   }),
   marcarEnviadoManual: (id, enviado) => req(`/conciliacion/comprobantes-manuales/${id}/enviado`, {
     method: 'PATCH',

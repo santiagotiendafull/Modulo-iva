@@ -1023,10 +1023,22 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
 .pill-tabs-secundaria { margin-bottom: 18px; }
 .pill-tabs-secundaria .pill-tab { padding: 7px 14px; font-size: 12.5px; }
 
-.comprobante-manual-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.comprobante-manual-form input[type="text"],
-.comprobante-manual-form input[type="number"] { min-width: 150px; flex: 1; }
-.comprobante-manual-form input[type="date"] { flex: none; }
+.comprobante-manual-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.comprobante-manual-form .campo-manual {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 140px;
+}
+.comprobante-manual-form .campo-manual span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.comprobante-manual-form .campo-manual-chico { flex: 0 1 100px; min-width: 100px; }
+.comprobante-manual-form input[type="date"] { min-width: 150px; }
 
 .control-mensual-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 

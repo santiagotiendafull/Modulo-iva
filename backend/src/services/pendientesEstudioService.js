@@ -68,7 +68,6 @@ function fechaAIso(valorCrudo) {
 // Comprobantes Recibidos" completo (con desglose por alícuota) — el estudio manda uno u otro según
 // el mes, y ambos traen los mismos datos base que necesitamos.
 const CAMPOS = {
-  fecha: ['fecha'],
   tipo: ['tipo', 'tipo comprobante'],
   pdv: ['punto de venta'],
   numero: ['numero desde', 'numero', 'nro', 'nro comprobante'],
@@ -84,6 +83,15 @@ function mapearEncabezados(fila) {
   fila.forEach((valor, idx) => {
     if (valor == null) return;
     const normalizado = sinAcentos(String(valor).trim().toLowerCase());
+    // La columna de fecha se matchea "empieza con" (no exacto) porque algunas hojas la titulan
+    // "Fecha Comprobante" o similar en vez de solo "Fecha" — mismo criterio que ya usa
+    // indiceFilaEncabezado más abajo para encontrar la fila de encabezados, así los dos coinciden.
+    // Si no fuera así, la fila de encabezados se detecta bien pero la columna de fecha nunca se
+    // mapea, y todas las filas de esa hoja quedan sin fecha.
+    if (mapa.fecha === undefined && normalizado.startsWith('fecha')) {
+      mapa.fecha = idx;
+      return;
+    }
     for (const [campo, alias] of Object.entries(CAMPOS)) {
       if (mapa[campo] === undefined && alias.includes(normalizado)) mapa[campo] = idx;
     }

@@ -61,6 +61,15 @@ export async function initDb() {
     await run('ALTER TABLE pendientes_estudio ADD COLUMN listo INTEGER NOT NULL DEFAULT 0');
   }
 
+  // Migración simple para bases ya creadas antes de agregar CUIT e IVA a los comprobantes manuales.
+  const columnasManuales = new Set((await all('PRAGMA table_info(comprobantes_manuales)')).map((c) => c.name));
+  if (!columnasManuales.has('cuit_contraparte')) {
+    await run('ALTER TABLE comprobantes_manuales ADD COLUMN cuit_contraparte TEXT');
+  }
+  if (!columnasManuales.has('iva')) {
+    await run('ALTER TABLE comprobantes_manuales ADD COLUMN iva REAL NOT NULL DEFAULT 0');
+  }
+
   // Primera vez que corre: siembra las 3 cuentas iniciales (una por rol).
   const { hashPassword } = await import('./services/authService.js');
   const yaHayUsuarios = await get('SELECT id FROM usuarios LIMIT 1');

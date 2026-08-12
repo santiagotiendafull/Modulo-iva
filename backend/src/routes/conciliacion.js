@@ -18,7 +18,9 @@ import {
   marcarListo,
 } from '../services/pendientesEstudioService.js';
 import {
-  listarProveedoresFrecuentes,
+  listarProveedoresManuales,
+  agregarProveedorManual,
+  eliminarProveedorManual,
   listarComprobantesManuales,
   agregarComprobanteManual,
   marcarEnviadoManual,
@@ -55,9 +57,11 @@ function tipoComprobanteLabel(v) {
   return String(v).replace(/^\s*\d+\s*-\s*/, '').trim();
 }
 
-// Tabla genérica en PDF (mismo formato que ya usaba faltantes.pdf), reutilizada por los 3 PDF de
+// Tabla genérica en PDF (mismo formato que ya usaba faltantes.pdf), reutilizada por los PDF de
 // comprobantes de esta pantalla: título + subtítulo + tabla con salto de página automático.
-function renderTablaPdf(res, { nombreArchivo, titulo, subtitulo, cols, filas, notaVacio, notaTotal }) {
+// Acepta o bien `filas` (una sola tabla, uso original) o `secciones: [{titulo, filas}]` para separar
+// grupos dentro del mismo PDF (ej. Control mensual: los de ARCA aparte de los cargados a mano).
+function renderTablaPdf(res, { nombreArchivo, titulo, subtitulo, cols, filas, secciones, notaVacio, notaTotal }) {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
 
@@ -79,29 +83,48 @@ function renderTablaPdf(res, { nombreArchivo, titulo, subtitulo, cols, filas, no
     return y + 20;
   }
 
-  let y = encabezado(doc.y);
-  doc.font('Helvetica').fontSize(9);
-
-  for (const f of filas) {
-    if (y > doc.page.height - 60) {
-      doc.addPage();
-      y = encabezado(40);
-      doc.font('Helvetica').fontSize(9);
+  function tabla(y, filasSeccion) {
+    y = encabezado(y);
+    doc.font('Helvetica').fontSize(9);
+    for (const f of filasSeccion) {
+      if (y > doc.page.height - 60) {
+        doc.addPage();
+        y = encabezado(40);
+        doc.font('Helvetica').fontSize(9);
+      }
+      let x = 40;
+      for (const c of cols) {
+        const valor = c.formato ? c.formato(f[c.key]) : (f[c.key] ?? '');
+        doc.fillColor('#000').text(String(valor), x, y, { width: c.width, height: 14, ellipsis: true, lineBreak: false });
+        x += c.width;
+      }
+      y += 16;
     }
-    let x = 40;
-    for (const c of cols) {
-      const valor = c.formato ? c.formato(f[c.key]) : (f[c.key] ?? '');
-      doc.fillColor('#000').text(String(valor), x, y, { width: c.width, height: 14, ellipsis: true, lineBreak: false });
-      x += c.width;
-    }
-    y += 16;
+    return y;
   }
 
-  if (filas.length === 0) {
+  const gruposSecciones = secciones ?? [{ titulo: null, filas }];
+  const totalFilas = gruposSecciones.reduce((acc, s) => acc + s.filas.length, 0);
+  let y = doc.y;
+  let primeraSeccion = true;
+
+  for (const seccion of gruposSecciones) {
+    if (seccion.filas.length === 0) continue;
+    if (seccion.titulo) {
+      if (!primeraSeccion) y += 14;
+      if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#000').text(seccion.titulo, 40, y);
+      y += 18;
+    }
+    y = tabla(y, seccion.filas);
+    primeraSeccion = false;
+  }
+
+  if (totalFilas === 0) {
     doc.fontSize(11).fillColor('#555').text(notaVacio, 40, y);
   } else if (notaTotal) {
     doc.moveDown(1);
-    doc.fontSize(10).fillColor('#000').text(notaTotal(filas.length), 40, y + 10);
+    doc.fontSize(10).fillColor('#000').text(notaTotal(totalFilas), 40, y + 10);
   }
 
   doc.end();
@@ -153,6 +176,7 @@ const COLS_COMPROBANTES = [
   { label: 'Número', width: 70, key: 'numero' },
   { label: 'CUIT', width: 100, key: 'cuit_contraparte' },
   { label: 'Proveedor', width: 220, key: 'denominacion_contraparte' },
+  { label: 'IVA', width: 80, key: 'iva', formato: money },
   { label: 'Total', width: 90, key: 'total', formato: money },
 ];
 
@@ -263,7 +287,21 @@ router.get('/pendientes-estudio/pdf-proveedor', soloAdminODev, async (req, res) 
 // --- Comprobantes manuales (peajes, estaciones de servicio, etc. — no aparecen en ARCA) --------
 
 router.get('/comprobantes-manuales/proveedores', soloAdminODev, async (req, res) => {
-  res.json(await listarProveedoresFrecuentes());
+  res.json(await listarProveedoresManuales());
+});
+
+router.post('/comprobantes-manuales/proveedores', soloAdminODev, async (req, res) => {
+  const { cuit, denominacion } = req.body;
+  try {
+    res.json(await agregarProveedorManual(cuit, denominacion));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/comprobantes-manuales/proveedores/:id', soloAdminODev, async (req, res) => {
+  await eliminarProveedorManual(req.params.id);
+  res.json({ ok: true });
 });
 
 router.get('/comprobantes-manuales', soloAdminODev, async (req, res) => {
@@ -279,9 +317,9 @@ router.get('/comprobantes-manuales', soloAdminODev, async (req, res) => {
 });
 
 router.post('/comprobantes-manuales', soloAdminODev, async (req, res) => {
-  const { razon_social: razonSocial, fecha, proveedor, tipo_comprobante: tipoComprobante, numero, monto } = req.body;
+  const { razon_social: razonSocial, fecha, proveedor, cuit, tipo_comprobante: tipoComprobante, numero, iva, monto } = req.body;
   try {
-    const fila = await agregarComprobanteManual({ razonSocial, fecha, proveedor, tipoComprobante, numero, monto });
+    const fila = await agregarComprobanteManual({ razonSocial, fecha, proveedor, cuit, tipoComprobante, numero, iva, monto });
     res.json(fila);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -322,13 +360,16 @@ router.patch('/control-mensual/marcar', soloAdminODev, async (req, res) => {
 router.get('/control-mensual/pdf', soloAdminODev, async (req, res) => {
   const { razon_social: razonSocial, periodo } = req.query;
   try {
-    const filas = await comprobantesMarcadosParaPdf(razonSocial, periodo);
+    const { arca, manual } = await comprobantesMarcadosParaPdf(razonSocial, periodo);
     renderTablaPdf(res, {
       nombreArchivo: `control-mensual-${razonSocial}-${periodo}.pdf`,
       titulo: `Control mensual — comprobantes marcados para enviar — ${razonSocial}`,
       subtitulo: `Período ${periodo}. Generado el ${new Date().toLocaleDateString('es-AR')}.`,
       cols: COLS_COMPROBANTES,
-      filas,
+      secciones: [
+        { titulo: null, filas: arca },
+        { titulo: 'SE AGREGA MANUAL PORQUE NO FIGURAN EN LA LISTA DE ARCA', filas: manual },
+      ],
       notaVacio: 'No hay comprobantes marcados para este período.',
       notaTotal: (n) => `Total de comprobantes marcados: ${n}`,
     });

@@ -42,7 +42,7 @@ export async function obtenerControlMensual(razonSocial, periodo) {
 
   const [comprobantesArcaCrudos, marcas, manuales] = await Promise.all([
     all(
-      `SELECT id, fecha, tipo_comprobante, pdv, numero_desde as numero, cuit_contraparte, denominacion_contraparte, total
+      `SELECT id, fecha, tipo_comprobante, pdv, numero_desde as numero, cuit_contraparte, denominacion_contraparte, iva, total
        FROM comprobantes WHERE razon_social = ? AND periodo = ? AND tipo = 'compra'`,
       [razonSocial, periodo]
     ),
@@ -64,6 +64,7 @@ export async function obtenerControlMensual(razonSocial, periodo) {
     numero: c.numero,
     cuit_contraparte: c.cuit_contraparte,
     denominacion_contraparte: c.denominacion_contraparte,
+    iva: c.iva,
     total: c.total,
     enviado: marcasPorClave.get(`${c.cuit_contraparte}|${c.pdv}|${c.numero}`) ?? false,
   }));
@@ -75,8 +76,9 @@ export async function obtenerControlMensual(razonSocial, periodo) {
     tipo_comprobante: m.tipo_comprobante,
     pdv: null,
     numero: m.numero,
-    cuit_contraparte: null,
+    cuit_contraparte: m.cuit_contraparte,
     denominacion_contraparte: m.proveedor,
+    iva: m.iva,
     total: m.monto,
     enviado: !!m.enviado,
   }));
@@ -105,9 +107,16 @@ export async function marcarEnviadoArca(razonSocial, cuitContraparte, pdv, numer
   );
 }
 
+// Separados por origen para que el PDF pueda mostrar los cargados a mano en su propia sección: son
+// comprobantes que no tienen respaldo en ARCA, así que conviene que quede claro cuáles son antes de
+// que el estudio los reciba junto con el resto.
 export async function comprobantesMarcadosParaPdf(razonSocial, periodo) {
   const { filas } = await obtenerControlMensual(razonSocial, periodo);
-  return filas.filter((f) => f.enviado);
+  const marcados = filas.filter((f) => f.enviado);
+  return {
+    arca: marcados.filter((f) => f.origen === 'arca'),
+    manual: marcados.filter((f) => f.origen === 'manual'),
+  };
 }
 
 // Cruza tu Control mensual contra lo que dice pendientes_estudio para el mismo período (pendientes_

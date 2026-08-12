@@ -191,13 +191,26 @@ CREATE TABLE IF NOT EXISTS comprobantes_manuales (
   fecha             TEXT NOT NULL,
   periodo           TEXT NOT NULL, -- 'YYYY-MM' derivado de fecha
   proveedor         TEXT NOT NULL,
+  cuit_contraparte  TEXT,
   tipo_comprobante  TEXT,
   numero            TEXT,
-  monto             REAL NOT NULL DEFAULT 0,
+  iva               REAL NOT NULL DEFAULT 0,
+  monto             REAL NOT NULL DEFAULT 0, -- Importe Total
   enviado           INTEGER NOT NULL DEFAULT 0,
   creado_en         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_comprobantes_manuales_periodo ON comprobantes_manuales (razon_social, periodo);
+
+-- Proveedores habituales para la carga manual (peajes, combustible, etc.): un directorio CUIT +
+-- Denominación para precargar ambos campos de una al elegir el proveedor, en vez de tipearlos cada
+-- vez. Se puede precargar a mano (los más frecuentes) y también se agrega solo cada vez que se carga
+-- un comprobante manual con un CUIT que todavía no está en el directorio.
+CREATE TABLE IF NOT EXISTS proveedores_manuales (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  cuit          TEXT NOT NULL UNIQUE,
+  denominacion  TEXT NOT NULL,
+  creado_en     TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 -- Control mensual: marca "enviado" (voy a mandar / ya mandé este mes) sobre comprobantes que ya
 -- están en la tabla comprobantes (ARCA). No se guarda en comprobantes directamente porque esa tabla
