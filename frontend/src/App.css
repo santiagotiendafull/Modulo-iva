@@ -1039,6 +1039,12 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
 }
 .comprobante-manual-form .campo-manual-chico { flex: 0 1 100px; min-width: 100px; }
 .comprobante-manual-form input[type="date"] { min-width: 150px; }
+.comprobante-manual-form input[type="number"] { -moz-appearance: textfield; }
+.comprobante-manual-form input[type="number"]::-webkit-outer-spin-button,
+.comprobante-manual-form input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 
 .control-mensual-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 
