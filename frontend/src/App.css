@@ -935,6 +935,23 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
 .tabla-conciliacion-comprobantes tbody tr.fila-clickeable:hover { background: var(--code-bg); }
 .tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-seleccionada { background: var(--accent-bg); }
 .tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-seleccionada td { color: var(--text-h); }
+.tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-alerta { background: rgba(208, 59, 59, 0.08); }
+.tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-alerta.fila-seleccionada { background: rgba(208, 59, 59, 0.16); }
+.alerta-badge { color: var(--bad); margin-right: 6px; cursor: help; }
+
+.alerta-reenvio {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(208, 59, 59, 0.08);
+  border: 1px solid rgba(208, 59, 59, 0.25);
+  font-size: 13px;
+}
+.alerta-reenvio p { margin: 0 0 8px; color: var(--bad); font-weight: 600; }
+.alerta-reenvio ul { margin: 0 0 10px; padding-left: 20px; }
+.alerta-reenvio li { margin-bottom: 4px; }
+
+.card.card-alerta .card-value { color: var(--bad); }
 
 .estado-pill {
   display: inline-block;

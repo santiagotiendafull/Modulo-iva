@@ -153,6 +153,11 @@ CREATE TABLE IF NOT EXISTS pendientes_estudio (
   -- físico. No lo saca de pendientes ni lo manda al estudio — eso recién pasa al generar el PDF de
   -- envío. Se preserva al reimportar un Excel nuevo (ver importarHojas en pendientesEstudioService.js).
   listo                     INTEGER NOT NULL DEFAULT 0,
+  -- Se completa al importar (ver importarHojas): si este comprobante ya está en el historial de
+  -- envío (envio_estudio_item) por clave natural, el estudio lo está pidiendo de nuevo aunque ya se
+  -- lo mandamos — señal para avisarle en vez de mandarlo (o no) sin darse cuenta.
+  ya_enviado_antes          INTEGER NOT NULL DEFAULT 0,
+  enviado_antes_en          TEXT,
   creado_en                 TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

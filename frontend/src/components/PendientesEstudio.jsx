@@ -49,6 +49,7 @@ export default function PendientesEstudio({ razonSocial }) {
   const [previsualizando, setPrevisualizando] = useState(false);
   const [importando, setImportando] = useState(false);
   const [estadoImport, setEstadoImport] = useState(null);
+  const [alertasImport, setAlertasImport] = useState(null);
 
   const [enviando, setEnviando] = useState(false);
   const [proveedorPdf, setProveedorPdf] = useState('');
@@ -110,9 +111,11 @@ export default function PendientesEstudio({ razonSocial }) {
   async function confirmarImportacion() {
     setImportando(true);
     setEstadoImport(null);
+    setAlertasImport(null);
     try {
       const r = await api.importarPendientesEstudio(archivo, [...hojasElegidas], razonImport);
       setEstadoImport({ tipo: 'ok', mensaje: `${r.cantidad} comprobantes pendientes cargados para ${razonImport} (${hojasElegidas.size} hoja${hojasElegidas.size > 1 ? 's' : ''}). Reemplazó la lista anterior de esa razón social.` });
+      if (r.alertas?.length > 0) setAlertasImport({ razonSocial: razonImport, items: r.alertas });
       setArchivo(null);
       setHojas(null);
       setHojasElegidas(new Set());
@@ -209,7 +212,9 @@ export default function PendientesEstudio({ razonSocial }) {
         sigue en esta lista, no se manda todavía. Cuando llegue el momento de mandarle todo al
         estudio, generá el PDF: recién ahí esos comprobantes pasan al historial de abajo. Al mes
         siguiente el estudio manda un Excel nuevo sin lo que ya le mandaste; se sube igual y
-        reemplaza esta lista (lo que ya tenías tildado sigue tildado si sigue apareciendo).
+        reemplaza esta lista (lo que ya tenías tildado sigue tildado si sigue apareciendo). Si el
+        Excel nuevo vuelve a pedir algo que ya le mandamos en un PDF anterior, queda marcado con ⚠
+        para avisarle al estudio en vez de mandarlo de nuevo sin darse cuenta.
       </p>
 
       <div className="fuente-card">
@@ -219,7 +224,7 @@ export default function PendientesEstudio({ razonSocial }) {
             <p>Después de elegir el archivo vas a poder elegir qué hoja importar y para qué razón social.</p>
           </div>
         </div>
-        <input type="file" accept=".xlsx" onChange={elegirArchivo} disabled={previsualizando || importando} />
+        <input type="file" accept=".xlsx,.xls" onChange={elegirArchivo} disabled={previsualizando || importando} />
         {previsualizando && <p className="estado-mensaje">Leyendo el Excel…</p>}
         {hojas && (
           <div className="pendientes-import-controles">
@@ -248,6 +253,24 @@ export default function PendientesEstudio({ razonSocial }) {
           </div>
         )}
         {estadoImport && <p className={`estado-mensaje ${estadoImport.tipo}`}>{estadoImport.mensaje}</p>}
+        {alertasImport && (
+          <div className="alerta-reenvio">
+            <p>
+              ⚠ El estudio está pidiendo de nuevo {alertasImport.items.length} comprobante
+              {alertasImport.items.length > 1 ? 's' : ''} de {alertasImport.razonSocial} que ya le mandamos antes —
+              quedaron marcados en la lista de abajo, avisale que ya se los enviamos:
+            </p>
+            <ul>
+              {alertasImport.items.map((a, i) => (
+                <li key={i}>
+                  {a.denominacion_contraparte || a.cuit_contraparte} — PDV {a.pdv || '—'} Nº {a.numero || '—'}
+                  {' '}({fechaLabel(a.fecha)}) — se lo mandamos el {fechaHoraLabel(a.enviado_antes_en)}
+                </li>
+              ))}
+            </ul>
+            <button type="button" className="btn-desglose" onClick={() => setAlertasImport(null)}>Cerrar</button>
+          </div>
+        )}
       </div>
 
       {error && <p className="error-banner">{error}</p>}
@@ -277,6 +300,15 @@ export default function PendientesEstudio({ razonSocial }) {
               <div className="card-label">Comprobantes ya enviados</div>
               <div className="card-value">{pendientes.kpis.cantidad_enviados}</div>
             </div>
+            {pendientes.kpis.cantidad_alertas > 0 && (
+              <div className="card card-alerta">
+                <div className="card-label">
+                  El estudio los pide de nuevo
+                  <InfoTooltip texto="Comprobantes de esta lista que ya le mandamos al estudio en un PDF anterior, pero volvió a pedirlos en el Excel más reciente." />
+                </div>
+                <div className="card-value">{pendientes.kpis.cantidad_alertas}</div>
+              </div>
+            )}
           </div>
 
           {pendientes.kpis.top_proveedores.length > 0 && (
@@ -384,7 +416,7 @@ export default function PendientesEstudio({ razonSocial }) {
                   {ordenadas.map((f) => (
                     <tr
                       key={f.id}
-                      className={`fila-clickeable ${seleccionados.has(f.id) ? 'fila-seleccionada' : ''}`}
+                      className={`fila-clickeable ${seleccionados.has(f.id) ? 'fila-seleccionada' : ''} ${f.ya_enviado_antes ? 'fila-alerta' : ''}`}
                       onClick={() => toggleSeleccion(f.id)}
                     >
                       <td>{fechaLabel(f.fecha)}</td>
@@ -392,7 +424,12 @@ export default function PendientesEstudio({ razonSocial }) {
                       <td>{f.pdv}</td>
                       <td>{f.numero}</td>
                       <td>{f.cuit_contraparte}</td>
-                      <td className="col-concepto" title={f.denominacion_contraparte || ''}>{f.denominacion_contraparte || '—'}</td>
+                      <td className="col-concepto" title={f.denominacion_contraparte || ''}>
+                        {!!f.ya_enviado_antes && (
+                          <span className="alerta-badge" title={`Ya se lo mandamos al estudio el ${fechaHoraLabel(f.enviado_antes_en)} — lo está pidiendo de nuevo`}>⚠</span>
+                        )}
+                        {f.denominacion_contraparte || '—'}
+                      </td>
                       <td>{money(f.neto_gravado)}</td>
                       <td>{money(f.iva)}</td>
                       <td>{money(f.total)}</td>

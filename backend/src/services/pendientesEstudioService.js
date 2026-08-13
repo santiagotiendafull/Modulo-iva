@@ -4,13 +4,27 @@
 // Diferencia). No se compara contra ARCA — se cargan tal cual como la lista de pendientes: se eligen
 // todas las hojas relevantes de esa razón social y se importan juntas, reemplazando por completo lo
 // que había antes (el estudio ya viene sacando de esa lista lo que le vamos mandando).
-import ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 import { db, all, run, get } from '../db.js';
 
+// El estudio manda a veces .xlsx y a veces el formato binario viejo .xls — ExcelJS (usado en el
+// resto de la app) solo entiende .xlsx y ante un .xls no tira error, devuelve un workbook con 0
+// hojas (por eso "subo el excel y no aparece ninguna hoja"). xlsx (SheetJS) lee los dos formatos
+// sin distinción, así que este importador puntual usa esa librería en vez de ExcelJS.
 function normalizarCuit(v) {
   if (v == null || v === '') return null;
   const soloDigitos = String(v).trim().replace(/\.0+$/, '').replace(/[^\d]/g, '');
   return soloDigitos || null;
+}
+
+// Clave natural para saber si dos comprobantes (de fuentes distintas: import nuevo vs. historial de
+// envíos) son "el mismo" — mismo criterio que ya se usa en controlEnvioMensualService, con el
+// agregado de sacar ceros a la izquierda de pdv/número porque una fuente puede traer "08" y otra "8".
+function claveNatural(cuit, pdv, numero) {
+  const c = normalizarCuit(cuit) || '';
+  const p = (pdv ?? '').toString().trim().replace(/^0+(?=\d)/, '');
+  const n = (numero ?? '').toString().trim().replace(/^0+(?=\d)/, '');
+  return `${c}|${p}|${n}`;
 }
 
 function sinAcentos(s) {
@@ -99,66 +113,66 @@ function mapearEncabezados(fila) {
   return mapa;
 }
 
-function celdaAValor(cell) {
-  if (cell == null) return '';
-  if (cell instanceof Date) {
-    const d = String(cell.getUTCDate()).padStart(2, '0');
-    const m = String(cell.getUTCMonth() + 1).padStart(2, '0');
-    return `${d}/${m}/${cell.getUTCFullYear()}`;
+function celdaAValor(v) {
+  if (v == null) return '';
+  if (v instanceof Date) {
+    const d = String(v.getUTCDate()).padStart(2, '0');
+    const m = String(v.getUTCMonth() + 1).padStart(2, '0');
+    return `${d}/${m}/${v.getUTCFullYear()}`;
   }
-  if (typeof cell === 'object') {
-    if ('text' in cell) return cell.text;
-    if ('result' in cell) return cell.result;
-    if ('richText' in cell) return cell.richText.map((r) => r.text).join('');
-  }
-  return cell;
+  return v;
+}
+
+// Cada hoja como array de filas (cada fila, array de celdas por columna) — más simple de recorrer
+// que la API de worksheet de ExcelJS, y ya viene homogeneizado (sin celdas con {text, result,
+// richText}) porque sheet_to_json las resuelve solo.
+function leerFilas(sheet) {
+  return XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null }).map((fila) => fila.map(celdaAValor));
 }
 
 // Fila cuya primera celda empieza con "fecha": algunas hojas traen una fila de título antes de los
 // encabezados y otras no, así que no se puede asumir una cantidad fija de filas a saltear.
-function indiceFilaEncabezado(sheet) {
-  let indice = null;
-  sheet.eachRow((row, rowNumber) => {
-    if (indice != null) return;
-    const primera = String(celdaAValor(row.getCell(1).value) || '').trim().toLowerCase();
-    if (primera.startsWith('fecha')) indice = rowNumber;
-  });
-  return indice;
+function indiceFilaEncabezado(filas) {
+  for (let i = 0; i < filas.length; i++) {
+    const primera = String(filas[i][0] || '').trim().toLowerCase();
+    if (primera.startsWith('fecha')) return i;
+  }
+  return null;
 }
 
 export async function previsualizarHojas(buffer) {
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(buffer);
-  return wb.worksheets.map((s) => ({ nombre: s.name, filas: Math.max(0, s.rowCount - 1) }));
+  const wb = XLSX.read(buffer, { type: 'buffer' });
+  return wb.SheetNames.map((nombre) => {
+    const filas = leerFilas(wb.Sheets[nombre]);
+    return { nombre, filas: Math.max(0, filas.length - 1) };
+  });
 }
 
 const INSERT_SQL = `
   INSERT INTO pendientes_estudio
-    (razon_social, fecha, tipo_comprobante, pdv, numero, cuit_contraparte, denominacion_contraparte, neto_gravado, iva, total, archivo_origen, listo)
+    (razon_social, fecha, tipo_comprobante, pdv, numero, cuit_contraparte, denominacion_contraparte, neto_gravado, iva, total, archivo_origen, listo, ya_enviado_antes, enviado_antes_en)
   VALUES
-    (@razon_social, @fecha, @tipo_comprobante, @pdv, @numero, @cuit_contraparte, @denominacion_contraparte, @neto_gravado, @iva, @total, @archivo_origen, @listo)
+    (@razon_social, @fecha, @tipo_comprobante, @pdv, @numero, @cuit_contraparte, @denominacion_contraparte, @neto_gravado, @iva, @total, @archivo_origen, @listo, @ya_enviado_antes, @enviado_antes_en)
 `;
 
-function parsearHoja(sheet, razonSocial, archivoOrigen) {
-  const filaEncabezado = indiceFilaEncabezado(sheet);
-  if (!filaEncabezado) throw new Error(`Hoja "${sheet.name}": no se encontró la fila de encabezados (tiene que haber una columna "Fecha").`);
-  const encabezados = (sheet.getRow(filaEncabezado).values ?? []).slice(1).map(celdaAValor);
-  const mapa = mapearEncabezados(encabezados);
+function parsearHoja(filas, razonSocial, archivoOrigen, nombreHoja) {
+  const filaEncabezado = indiceFilaEncabezado(filas);
+  if (filaEncabezado == null) throw new Error(`Hoja "${nombreHoja}": no se encontró la fila de encabezados (tiene que haber una columna "Fecha").`);
+  const mapa = mapearEncabezados(filas[filaEncabezado]);
   const faltantes = ['cuit', 'total'].filter((c) => mapa[c] === undefined);
-  if (faltantes.length > 0) throw new Error(`A la hoja "${sheet.name}" le faltan columnas obligatorias: ${faltantes.join(', ')}.`);
+  if (faltantes.length > 0) throw new Error(`A la hoja "${nombreHoja}" le faltan columnas obligatorias: ${faltantes.join(', ')}.`);
 
-  const filas = [];
-  sheet.eachRow((row, rowNumber) => {
-    if (rowNumber <= filaEncabezado) return;
-    const valores = row.values.slice(1).map(celdaAValor);
+  const resultado = [];
+  for (let i = filaEncabezado + 1; i < filas.length; i++) {
+    const valores = filas[i];
     const val = (campo) => (mapa[campo] === undefined ? null : valores[mapa[campo]]);
 
     const cuit = normalizarCuit(val('cuit'));
-    if (!cuit) return;
+    if (!cuit) continue;
 
     const fecha = fechaAIso(val('fecha'));
 
-    filas.push({
+    resultado.push({
       razon_social: razonSocial,
       fecha,
       tipo_comprobante: val('tipo') != null && val('tipo') !== '' ? String(val('tipo')) : null,
@@ -172,8 +186,8 @@ function parsearHoja(sheet, razonSocial, archivoOrigen) {
       archivo_origen: archivoOrigen,
       listo: 0,
     });
-  });
-  return filas;
+  }
+  return resultado;
 }
 
 // El estudio manda un solo Excel con varias hojas relevantes para la misma razón social (ej. una
@@ -183,14 +197,13 @@ function parsearHoja(sheet, razonSocial, archivoOrigen) {
 export async function importarHojas(buffer, nombresHojas, razonSocial, archivoOrigen) {
   if (!['NT', 'Target'].includes(razonSocial)) throw new Error('Falta razón social (NT o Target).');
   if (!Array.isArray(nombresHojas) || nombresHojas.length === 0) throw new Error('Elegí al menos una hoja para importar.');
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(buffer);
+  const wb = XLSX.read(buffer, { type: 'buffer' });
 
   const filasCrudas = [];
   for (const nombreHoja of nombresHojas) {
-    const sheet = wb.getWorksheet(nombreHoja);
+    const sheet = wb.Sheets[nombreHoja];
     if (!sheet) throw new Error(`No se encontró la hoja "${nombreHoja}" en el Excel.`);
-    filasCrudas.push(...parsearHoja(sheet, razonSocial, archivoOrigen));
+    filasCrudas.push(...parsearHoja(leerFilas(sheet), razonSocial, archivoOrigen, nombreHoja));
   }
 
   // Algunas hojas del estudio (formato "Mis Comprobantes Recibidos" completo) traen cada comprobante
@@ -211,14 +224,50 @@ export async function importarHojas(buffer, nombresHojas, razonSocial, archivoOr
   );
   const clavesListas = new Set(listosAntes.map((r) => `${r.cuit_contraparte}|${r.pdv}|${r.numero}`));
 
-  const filas = [...porClave.entries()].map(([clave, f]) => ({ ...f, listo: clavesListas.has(clave) ? 1 : 0 }));
+  // El estudio a veces vuelve a pedir en un Excel nuevo un comprobante que ya le mandamos en un PDF
+  // anterior (no lo sacó de su lista todavía). Se cruza cada fila nueva contra el historial de envíos
+  // por clave natural, ordenado del más reciente al más viejo, para poder avisar "esto ya se lo
+  // mandamos el DD/MM/AAAA" en vez de que se pierda en la lista de pendientes como si fuera nuevo.
+  const enviosPrevios = await all(
+    `SELECT ei.cuit_contraparte, ei.pdv, ei.numero, e.fecha_hora
+     FROM envio_estudio_item ei JOIN envio_estudio e ON e.id = ei.envio_id
+     WHERE e.razon_social = ?
+     ORDER BY e.fecha_hora DESC`,
+    [razonSocial]
+  );
+  const enviadoAntesPorClave = new Map();
+  for (const e of enviosPrevios) {
+    const clave = claveNatural(e.cuit_contraparte, e.pdv, e.numero);
+    if (!enviadoAntesPorClave.has(clave)) enviadoAntesPorClave.set(clave, e.fecha_hora);
+  }
+
+  const filas = [...porClave.entries()].map(([clave, f]) => {
+    const enviadoAntesEn = enviadoAntesPorClave.get(claveNatural(f.cuit_contraparte, f.pdv, f.numero)) ?? null;
+    return {
+      ...f,
+      listo: clavesListas.has(clave) ? 1 : 0,
+      ya_enviado_antes: enviadoAntesEn ? 1 : 0,
+      enviado_antes_en: enviadoAntesEn,
+    };
+  });
 
   await db.batch([
     { sql: 'DELETE FROM pendientes_estudio WHERE razon_social = ?', args: [razonSocial] },
     ...filas.map((r) => ({ sql: INSERT_SQL, args: r })),
   ], 'write');
 
-  return { cantidad: filas.length };
+  const alertas = filas
+    .filter((f) => f.ya_enviado_antes)
+    .map((f) => ({
+      denominacion_contraparte: f.denominacion_contraparte,
+      cuit_contraparte: f.cuit_contraparte,
+      pdv: f.pdv,
+      numero: f.numero,
+      fecha: f.fecha,
+      enviado_antes_en: f.enviado_antes_en,
+    }));
+
+  return { cantidad: filas.length, alertas };
 }
 
 export async function obtenerPendientes(razonSocial) {
@@ -249,6 +298,7 @@ export async function obtenerPendientes(razonSocial) {
       cantidad_pendiente: filas.length,
       cantidad_listos: filas.filter((f) => f.listo).length,
       cantidad_enviados: enviados?.n ?? 0,
+      cantidad_alertas: filas.filter((f) => f.ya_enviado_antes).length,
       top_proveedores: topProveedores,
     },
   };

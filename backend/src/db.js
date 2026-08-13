@@ -60,6 +60,12 @@ export async function initDb() {
   if (!columnasPendientes.has('listo')) {
     await run('ALTER TABLE pendientes_estudio ADD COLUMN listo INTEGER NOT NULL DEFAULT 0');
   }
+  if (!columnasPendientes.has('ya_enviado_antes')) {
+    await run('ALTER TABLE pendientes_estudio ADD COLUMN ya_enviado_antes INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!columnasPendientes.has('enviado_antes_en')) {
+    await run('ALTER TABLE pendientes_estudio ADD COLUMN enviado_antes_en TEXT');
+  }
 
   // Migración simple para bases ya creadas antes de agregar CUIT e IVA a los comprobantes manuales.
   const columnasManuales = new Set((await all('PRAGMA table_info(comprobantes_manuales)')).map((c) => c.name));
