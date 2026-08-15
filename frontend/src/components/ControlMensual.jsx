@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { money, fechaLabel, tipoComprobanteLabel } from '../format';
 import InfoTooltip from './InfoTooltip';
-import Dropzone from './Dropzone';
+import ComprobantesManuales from './ComprobantesManuales';
 
 const periodoActual = () => new Date().toISOString().slice(0, 7);
 
@@ -11,9 +11,11 @@ function normalizar(texto) {
 }
 
 // Checklist propio del mes: a diferencia de "Lo que pide el estudio" (que viene de su Excel), acá el
-// universo sale de Mis Comprobantes + Comprobantes manuales de ese período. Tildar un comprobante
-// significa "lo tengo listo / ya lo mandé este mes" — queda marcado con color y así se sabe de un
-// vistazo qué falta todavía para terminar de mandar todo lo del mes.
+// universo sale de Mis Comprobantes (cargado una sola vez en Cargar Datos — no hay import propio
+// acá) + Comprobantes manuales de ese período. Tildar un comprobante significa "lo tengo listo / ya
+// lo mandé este mes" — queda marcado con color. El tilde se guarda por CUIT+PDV+Número, no por el id
+// interno del comprobante, así que sigue ahí aunque Cargar Datos reemplace el archivo de ARCA al día
+// siguiente con comprobantes nuevos (ver controlEnvioMensualService.obtenerControlMensual).
 export default function ControlMensual({ razonSocial }) {
   const [periodo, setPeriodo] = useState(periodoActual());
   const [datos, setDatos] = useState(null);
@@ -21,12 +23,8 @@ export default function ControlMensual({ razonSocial }) {
   const [error, setError] = useState(null);
   const [generandoPdf, setGenerandoPdf] = useState(false);
   const [busqueda, setBusqueda] = useState('');
-
-  const [archivo, setArchivo] = useState(null);
-  const [previsualizando, setPrevisualizando] = useState(false);
-  const [previsualizacion, setPrevisualizacion] = useState(null);
-  const [importando, setImportando] = useState(false);
-  const [estadoImport, setEstadoImport] = useState(null);
+  const [filtroEstado, setFiltroEstado] = useState('todos');
+  const [modalManualAbierto, setModalManualAbierto] = useState(false);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -41,39 +39,6 @@ export default function ControlMensual({ razonSocial }) {
   }, [razonSocial, periodo]);
 
   useEffect(() => { cargar(); }, [cargar]);
-
-  async function elegirArchivo(file) {
-    setArchivo(file);
-    setPrevisualizacion(null);
-    setEstadoImport(null);
-    setPrevisualizando(true);
-    try {
-      const p = await api.previsualizarMesEnCurso(file, razonSocial);
-      if (!p.razonSocial) throw new Error('No se pudo determinar la razón social (CUIT) del archivo.');
-      setPrevisualizacion(p);
-    } catch (err) {
-      setEstadoImport({ tipo: 'error', mensaje: err.message });
-    } finally {
-      setPrevisualizando(false);
-    }
-  }
-
-  async function confirmarImportacion() {
-    setImportando(true);
-    setEstadoImport(null);
-    try {
-      const r = await api.importarMesEnCurso(archivo, razonSocial);
-      setEstadoImport({ tipo: 'ok', mensaje: `${r.filas.length} comprobantes cargados para ${r.razonSocial}.` });
-      setArchivo(null);
-      setPrevisualizacion(null);
-      if (previsualizacion?.periodos?.length === 1) setPeriodo(previsualizacion.periodos[0]);
-      else cargar();
-    } catch (err) {
-      setEstadoImport({ tipo: 'error', mensaje: err.message });
-    } finally {
-      setImportando(false);
-    }
-  }
 
   async function toggleEnviado(f) {
     const nuevoValor = !f.enviado;
@@ -109,52 +74,30 @@ export default function ControlMensual({ razonSocial }) {
     }
   }
 
+  function cerrarModalManual() {
+    setModalManualAbierto(false);
+    cargar(); // por si se cargó o borró algo mientras estaba abierto el popup
+  }
+
   const filas = datos?.filas ?? [];
   const busquedaN = normalizar(busqueda.trim());
   const filasFiltradas = filas.filter((f) =>
-    !busquedaN
-    || normalizar(f.denominacion_contraparte).includes(busquedaN)
-    || (f.numero || '').toLowerCase().includes(busquedaN)
+    (!busquedaN
+      || normalizar(f.denominacion_contraparte).includes(busquedaN)
+      || (f.numero || '').toLowerCase().includes(busquedaN))
+    && (filtroEstado === 'todos' || (filtroEstado === 'marcados' ? f.enviado : !f.enviado))
   );
 
   return (
     <div className="control-mensual">
       <p className="nota">
-        Todo lo que debería mandarse este mes: comprobantes de Mis Comprobantes Recibidos más los
-        cargados a mano, juntos. Tildá cada uno a medida que lo tenés listo o ya lo mandaste — queda
-        marcado con color. Siempre se puede volver a destildar, no hay "cerrar el mes".
+        Todo lo que debería mandarse este mes: comprobantes de Mis Comprobantes (cargados en Cargar
+        Datos) más los cargados a mano, juntos. Tildá cada uno a medida que lo tenés listo o ya lo
+        mandaste — queda marcado con color y se guarda aunque después cargues un Excel de ARCA
+        actualizado. Siempre se puede volver a destildar, no hay "cerrar el mes".
       </p>
 
-      <div className="fuente-card">
-        <div className="fuente-card-header">
-          <div>
-            <h3>Importar Mis Comprobantes Recibidos</h3>
-            <p>Para no tener que ir a Cargar Datos — importa directo acá y se suma al checklist del mes.</p>
-          </div>
-        </div>
-        <Dropzone
-          accept=".xlsx"
-          label={previsualizando ? 'Leyendo el Excel…' : 'Arrastrá o elegí el Excel de Recibidos'}
-          hint='El nombre debe incluir "Recibidos"'
-          disabled={previsualizando || importando}
-          onFile={elegirArchivo}
-        />
-        {previsualizacion && (
-          <div className="pendientes-import-controles">
-            <p className="nota">
-              {previsualizacion.comprobantes} comprobantes para {previsualizacion.razonSocial}
-              {' '}— período{previsualizacion.periodos.length > 1 ? 's' : ''}: {previsualizacion.periodos.join(', ')}.
-              {previsualizacion.razonSocial !== razonSocial && ` Ojo: estás en la pestaña de ${razonSocial}.`}
-            </p>
-            <button type="button" className="btn-cargar-todo" onClick={confirmarImportacion} disabled={importando}>
-              {importando ? 'Importando…' : 'Confirmar importación'}
-            </button>
-          </div>
-        )}
-        {estadoImport && <p className={`estado-mensaje ${estadoImport.tipo}`}>{estadoImport.mensaje}</p>}
-      </div>
-
-      <div className="control-mensual-header">
+      <div className="control-mensual-toolbar">
         <input
           type="month"
           value={periodo}
@@ -168,16 +111,26 @@ export default function ControlMensual({ razonSocial }) {
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
         />
-        <button type="button" className="btn-desglose" onClick={descargarPdf} disabled={generandoPdf || filas.length === 0}>
-          {generandoPdf ? 'Generando…' : 'Descargar PDF de los marcados'}
-        </button>
+        <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} aria-label="Filtrar por estado">
+          <option value="todos">Todos</option>
+          <option value="marcados">Marcados</option>
+          <option value="no-marcados">No marcados</option>
+        </select>
+        <div className="control-mensual-toolbar-acciones">
+          <button type="button" className="btn-desglose" onClick={() => setModalManualAbierto(true)}>
+            Comprobantes manuales
+          </button>
+          <button type="button" className="btn-desglose" onClick={descargarPdf} disabled={generandoPdf || filas.length === 0}>
+            {generandoPdf ? 'Generando…' : 'Descargar PDF de los marcados'}
+          </button>
+        </div>
       </div>
 
       {error && <p className="error-banner">{error}</p>}
 
       {!cargando && datos && (
         <>
-          <div className="resumen-cards">
+          <div className="resumen-cards resumen-cards-compacto">
             <div className="card">
               <div className="card-label">Comprobantes del mes</div>
               <div className="card-value">{datos.kpis.cantidad_total}</div>
@@ -222,7 +175,7 @@ export default function ControlMensual({ razonSocial }) {
                   >
                     <td>{fechaLabel(f.fecha)}</td>
                     <td className="col-concepto" title={f.tipo_comprobante || ''}>{tipoComprobanteLabel(f.tipo_comprobante) || '—'}</td>
-                    <td>{f.origen === 'manual' ? 'Manual' : 'ARCA'}</td>
+                    <td>{f.origen === 'manual' ? <span className="origen-pill origen-manual">Manual</span> : 'ARCA'}</td>
                     <td>{f.pdv || '—'}</td>
                     <td>{f.numero || '—'}</td>
                     <td className="col-concepto" title={f.denominacion_contraparte || ''}>{f.denominacion_contraparte || '—'}</td>
@@ -232,13 +185,22 @@ export default function ControlMensual({ razonSocial }) {
                 ))}
                 {filasFiltradas.length === 0 && (
                   <tr><td colSpan={8} className="bloque-nota">
-                    {filas.length === 0 ? `No hay comprobantes de compra cargados para ${razonSocial} en este período.` : 'Ningún comprobante coincide con la búsqueda.'}
+                    {filas.length === 0 ? `No hay comprobantes de compra cargados para ${razonSocial} en este período.` : 'Ningún comprobante coincide con el filtro.'}
                   </td></tr>
                 )}
               </tbody>
             </table>
           </div>
         </>
+      )}
+
+      {modalManualAbierto && (
+        <div className="modal-overlay" onClick={cerrarModalManual}>
+          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="modal-cerrar" onClick={cerrarModalManual} aria-label="Cerrar">×</button>
+            <ComprobantesManuales razonSocial={razonSocial} />
+          </div>
+        </div>
       )}
     </div>
   );
