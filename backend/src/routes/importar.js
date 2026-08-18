@@ -28,6 +28,20 @@ const upload = multer({
 
 const router = Router();
 
+// Guarda una copia del archivo subido en disco, además de procesarlo — para que los scripts de
+// import por lote (npm run import:historico / import:mes-en-curso, ver README) tengan el archivo a
+// mano después. Nada de la app corriendo vuelve a leer esta copia. En Vercel el filesystem es de
+// solo lectura (no existe /data en el bundle desplegado), así que esto no puede funcionar ahí — se
+// ignora el error en vez de tirar abajo la carga, que ya terminó bien sin la copia.
+function archivarCopia(dir, nombreArchivo, buffer) {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, nombreArchivo), buffer);
+  } catch (err) {
+    console.warn(`No se pudo archivar copia de "${nombreArchivo}" en ${dir}: ${err.message}`);
+  }
+}
+
 function colsDeNombreArchivo(nombre) {
   const esEmitido = /emitid/i.test(nombre);
   const esRecibido = /recibid/i.test(nombre);
@@ -76,8 +90,7 @@ router.post('/mes-en-curso', upload.single('archivo'), async (req, res) => {
     if (!resultado.razonSocial) {
       return res.status(422).json({ error: 'no se pudo determinar la razón social (CUIT) del archivo' });
     }
-    fs.mkdirSync(MES_EN_CURSO_DIR, { recursive: true });
-    fs.writeFileSync(path.join(MES_EN_CURSO_DIR, nombre), req.file.buffer);
+    archivarCopia(MES_EN_CURSO_DIR, nombre, req.file.buffer);
 
     const periodos = [...new Set(resultado.filas.map((f) => f.periodo))];
     res.json({
@@ -113,9 +126,7 @@ router.post('/historico', upload.single('archivo'), async (req, res) => {
 
   try {
     const row = await importarPdfBuffer(req.file.buffer, req.file.originalname);
-    const dir = path.join(HISTORICO_DIR, row.razon_social);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, req.file.originalname), req.file.buffer);
+    archivarCopia(path.join(HISTORICO_DIR, row.razon_social), req.file.originalname, req.file.buffer);
     res.json(row);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -169,9 +180,7 @@ router.post('/931', upload.single('archivo'), async (req, res) => {
 
   try {
     const row = await importarPdfBuffer931(req.file.buffer, req.file.originalname);
-    const dir = path.join(F931_DIR, row.razon_social);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, req.file.originalname), req.file.buffer);
+    archivarCopia(path.join(F931_DIR, row.razon_social), req.file.originalname, req.file.buffer);
     res.json(row);
   } catch (err) {
     res.status(500).json({ error: err.message });
