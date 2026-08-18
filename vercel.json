@@ -1,0 +1,13 @@
+{
+  "installCommand": "npm run vercel:install",
+  "buildCommand": "npm run vercel:build",
+  "outputDirectory": "frontend/dist",
+  "build": {
+    "env": {
+      "VITE_API_URL": "/api"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/:match*", "destination": "/api/index" }
+  ]
+}

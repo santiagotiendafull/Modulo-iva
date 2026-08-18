@@ -27,6 +27,20 @@ npm run dev                    # backend en :4310, frontend en :5182
 - PDF nuevo de un mes ya presentado → colocarlo en `data/source/historico/{NT,Target}/` y correr `npm run import:historico` de nuevo (hace upsert por razón social + período), o subirlo desde la app.
 - Excel actualizado del mes en curso → subirlo directamente desde la sección "Importar mes en curso" de la app (el nombre del archivo debe incluir "Emitidos" o "Recibidos").
 
+## Deploy (Vercel)
+
+Un solo proyecto de Vercel sirve todo — no hay backend y frontend como servicios separados:
+
+- `vercel.json` compila el frontend (`frontend/dist`) y expone el backend como función serverless
+  en `api/index.js` (re-exporta la app de Express de `backend/src/app.js`); todo `/api/*` se
+  redirige ahí.
+- Variables de entorno a configurar en Vercel (Project Settings → Environment Variables, **no** en
+  el repo): `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN`.
+- Las sesiones de login se guardan en la tabla `sesiones` (Turso), no en memoria — necesario porque
+  las funciones serverless no comparten proceso entre invocaciones.
+- Local (`npm run dev`) sigue igual: `backend/src/server.js` levanta la misma app de Express en
+  `:4310` como proceso propio.
+
 ## Pendiente para la próxima iteración
 
 - Desglose habitual/accesoria (ventas) y mercadería/gastos operativos (compras) dentro del mes en curso, vía tabla de mapeo por CUIT/proveedor.

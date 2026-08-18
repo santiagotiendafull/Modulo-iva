@@ -1,12 +1,11 @@
 // Login con usuario/contraseña y sesiones simples. Las contraseñas se guardan con scrypt
-// (nativo de Node, sin dependencia nueva) como "salt:hash" en hex. Las sesiones viven en
-// memoria: se pierden si el proceso se reinicia (en Render free ya pasa tras ~15 min de
-// inactividad), lo cual está bien para este tamaño de equipo — simplemente hay que
-// volver a loguearse.
+// (nativo de Node, sin dependencia nueva) como "salt:hash" en hex. Las sesiones se guardan en la
+// tabla `sesiones` (no en memoria): en Vercel cada invocación puede caer en una instancia
+// serverless distinta, así que un Map en memoria del proceso se perdería todo el tiempo.
 import crypto from 'node:crypto';
 import { get, all, run } from '../db.js';
 
-const sesiones = new Map(); // token -> { id, username, rol, creadoEn }
+const SESION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 días
 
 export function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -38,16 +37,26 @@ export async function login(username, password, { userAgent } = {}) {
   await registrarAcceso({ username, rol: usuario.rol, exito: true, userAgent });
 
   const token = crypto.randomBytes(32).toString('hex');
-  sesiones.set(token, { id: usuario.id, username: usuario.username, rol: usuario.rol, creadoEn: Date.now() });
+  await run(
+    'INSERT INTO sesiones (token, usuario_id, username, rol) VALUES (?, ?, ?, ?)',
+    [token, usuario.id, usuario.username, usuario.rol]
+  );
   return { token, username: usuario.username, rol: usuario.rol };
 }
 
-export function obtenerSesion(token) {
-  return sesiones.get(token) ?? null;
+export async function obtenerSesion(token) {
+  const sesion = await get('SELECT * FROM sesiones WHERE token = ?', [token]);
+  if (!sesion) return null;
+  const creadoEnMs = new Date(`${sesion.creado_en.replace(' ', 'T')}Z`).getTime();
+  if (Date.now() - creadoEnMs > SESION_TTL_MS) {
+    await run('DELETE FROM sesiones WHERE token = ?', [token]);
+    return null;
+  }
+  return { id: sesion.usuario_id, username: sesion.username, rol: sesion.rol };
 }
 
-export function cerrarSesion(token) {
-  sesiones.delete(token);
+export async function cerrarSesion(token) {
+  await run('DELETE FROM sesiones WHERE token = ?', [token]);
 }
 
 export async function obtenerHistorialAccesos(limit = 200) {

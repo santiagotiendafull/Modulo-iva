@@ -105,6 +105,18 @@ CREATE TABLE IF NOT EXISTS usuarios (
   creado_en     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Sesiones de login. Antes vivían en un Map en memoria del proceso backend — funcionaba en Render
+-- porque el proceso queda corriendo, pero no sirve en Vercel (funciones serverless: cada invocación
+-- puede caer en una instancia distinta, sin memoria compartida). Se persisten acá para que el login
+-- sobreviva entre invocaciones. obtenerSesion() en authService.js aplica el TTL y borra las vencidas.
+CREATE TABLE IF NOT EXISTS sesiones (
+  token       TEXT PRIMARY KEY,
+  usuario_id  INTEGER NOT NULL,
+  username    TEXT NOT NULL,
+  rol         TEXT NOT NULL,
+  creado_en   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Historial de accesos (éxito y fracaso), visible para el rol dev en Configuración.
 CREATE TABLE IF NOT EXISTS accesos (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
