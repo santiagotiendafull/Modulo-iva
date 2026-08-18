@@ -10,9 +10,7 @@
     "import:mes-en-curso": "npm run import:mes-en-curso --prefix backend",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
-    "dev": "concurrently -n API,WEB -c blue,green \"npm:dev:backend\" \"npm:dev:frontend\"",
-    "vercel:install": "npm run install:all",
-    "vercel:build": "npm run build --prefix frontend"
+    "dev": "concurrently -n API,WEB -c blue,green \"npm:dev:backend\" \"npm:dev:frontend\""
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

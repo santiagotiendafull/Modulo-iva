@@ -29,13 +29,18 @@ npm run dev                    # backend en :4310, frontend en :5182
 
 ## Deploy (Vercel)
 
-Un solo proyecto de Vercel sirve todo — no hay backend y frontend como servicios separados:
+Un solo proyecto de Vercel sirve todo — no hay backend y frontend como servicios separados en
+Render. El repo tiene `frontend/` y `backend/` como paquetes independientes, así que Vercel exige
+el formato "multi-service" de `vercel.json` (lo pide su propia UI al importar el proyecto):
 
-- `vercel.json` compila el frontend (`frontend/dist`) y expone el backend como función serverless
-  en `api/index.js` (re-exporta la app de Express de `backend/src/app.js`); todo `/api/*` se
-  redirige ahí.
+- `services.frontend` (root `frontend`, framework `vite`) compila el sitio estático.
+- `services.backend` (root `backend`) se sirve como función serverless: la entrada es
+  `backend/api/index.js`, que re-exporta la app de Express de `backend/src/app.js` (una app de
+  Express es directamente un handler `(req, res)` válido — Vercel no necesita envoltorio extra).
+- Los `rewrites` mandan todo `/api/*` al servicio backend y el resto al frontend.
 - Variables de entorno a configurar en Vercel (Project Settings → Environment Variables, **no** en
-  el repo): `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN`.
+  el repo): `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, y `VITE_API_URL=/api` (para que el frontend
+  llame al backend por ruta relativa en vez de `localhost:4310`).
 - Las sesiones de login se guardan en la tabla `sesiones` (Turso), no en memoria — necesario porque
   las funciones serverless no comparten proceso entre invocaciones.
 - Local (`npm run dev`) sigue igual: `backend/src/server.js` levanta la misma app de Express en
