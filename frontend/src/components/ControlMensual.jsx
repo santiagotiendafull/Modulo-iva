@@ -81,12 +81,16 @@ export default function ControlMensual({ razonSocial }) {
 
   const filas = datos?.filas ?? [];
   const busquedaN = normalizar(busqueda.trim());
-  const filasFiltradas = filas.filter((f) =>
-    (!busquedaN
-      || normalizar(f.denominacion_contraparte).includes(busquedaN)
-      || (f.numero || '').toLowerCase().includes(busquedaN))
-    && (filtroEstado === 'todos' || (filtroEstado === 'marcados' ? f.enviado : !f.enviado))
-  );
+  const filasFiltradas = filas.filter((f) => {
+    if (busquedaN
+      && !normalizar(f.denominacion_contraparte).includes(busquedaN)
+      && !(f.numero || '').toLowerCase().includes(busquedaN)) return false;
+    if (filtroEstado === 'marcados') return f.enviado;
+    if (filtroEstado === 'no-marcados') return !f.enviado;
+    if (filtroEstado === 'factura-a') return (tipoComprobanteLabel(f.tipo_comprobante) || '').includes('Factura A');
+    if (filtroEstado === 'factura-b') return (tipoComprobanteLabel(f.tipo_comprobante) || '').includes('Factura B');
+    return true; // 'todos'
+  });
 
   return (
     <div className="control-mensual">
@@ -115,6 +119,8 @@ export default function ControlMensual({ razonSocial }) {
           <option value="todos">Todos</option>
           <option value="marcados">Marcados</option>
           <option value="no-marcados">No marcados</option>
+          <option value="factura-a">Factura A</option>
+          <option value="factura-b">Factura B</option>
         </select>
         <div className="control-mensual-toolbar-acciones">
           <button type="button" className="btn-desglose" onClick={() => setModalManualAbierto(true)}>

@@ -82,11 +82,14 @@ function fechaAIso(valorCrudo) {
 // Comprobantes Recibidos" completo (con desglose por alícuota) — el estudio manda uno u otro según
 // el mes, y ambos traen los mismos datos base que necesitamos.
 const CAMPOS = {
-  tipo: ['tipo', 'tipo comprobante'],
+  // "comprobante" y "nro./denominacion receptor": variante de encabezados que empezó a mandar el
+  // estudio en 07/2026 — mismo dato (tipo de comprobante, CUIT y nombre del proveedor), otro nombre
+  // de columna. "Receptor" acá no es la empresa: sigue siendo el proveedor, igual que "Emisor" antes.
+  tipo: ['tipo', 'tipo comprobante', 'comprobante'],
   pdv: ['punto de venta'],
   numero: ['numero desde', 'numero', 'nro', 'nro comprobante'],
-  cuit: ['nro. doc. emisor', 'cuit', 'cuit proveedor'],
-  denominacion: ['denominacion emisor', 'proveedor', 'denominacion'],
+  cuit: ['nro. doc. emisor', 'cuit', 'cuit proveedor', 'nro. doc. receptor'],
+  denominacion: ['denominacion emisor', 'proveedor', 'denominacion', 'denominacion receptor'],
   neto_gravado: ['imp. neto gravado', 'neto gravado total', 'neto gravado'],
   iva: ['iva', 'total iva'],
   total: ['imp. total', 'total', 'importe total'],
