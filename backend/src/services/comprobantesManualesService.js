@@ -1,7 +1,10 @@
 // Comprobantes de compra que no aparecen en ARCA (peajes, estaciones de servicio, etc.) — se cargan
 // a mano acá y alimentan el Control mensual junto con los que sí vienen de Mis Comprobantes. El campo
 // "enviado" es el mismo tipo de marca que pendientes_estudio.listo: se puede tildar/destildar en
-// cualquier momento, no hay archivado ni borrado automático.
+// cualquier momento, no hay archivado ni borrado automático. Se cargan ya tildados (ver INSERT más
+// abajo) porque si alguien está cargando un comprobante a mano es porque ya lo tiene físico en
+// mano — no hace falta un segundo click para marcarlo. Esto es solo para lo que se cargue de acá en
+// adelante: no toca el campo "enviado" de los comprobantes que ya estaban cargados.
 import { all, run, get } from '../db.js';
 
 function normalizarCuit(v) {
@@ -67,8 +70,8 @@ export async function agregarComprobanteManual({ razonSocial, fecha, proveedor, 
   const cuitNorm = normalizarCuit(cuit);
   const periodo = fecha.slice(0, 7);
   const result = await run(
-    `INSERT INTO comprobantes_manuales (razon_social, fecha, periodo, proveedor, cuit_contraparte, tipo_comprobante, numero, iva, monto)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO comprobantes_manuales (razon_social, fecha, periodo, proveedor, cuit_contraparte, tipo_comprobante, numero, iva, monto, enviado)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
     [razonSocial, fecha, periodo, proveedor.trim(), cuitNorm, tipoComprobante || null, numero || null, ivaNum, montoNum]
   );
   if (cuitNorm) await recordarProveedor(cuitNorm, proveedor.trim());

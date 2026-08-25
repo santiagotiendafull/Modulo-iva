@@ -25,6 +25,10 @@ export default function ControlMensual({ razonSocial }) {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('todos');
   const [modalManualAbierto, setModalManualAbierto] = useState(false);
+  // Arranca bloqueado a propósito: un click accidental en la fila (al scrollear, seleccionar texto,
+  // etc.) tilda o destilda sin querer. Hay que desbloquear a propósito antes de poder tocar algo —
+  // y vuelve a bloquearse solo al cambiar de período o de razón social, o al recargar la pantalla.
+  const [bloqueado, setBloqueado] = useState(true);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -39,6 +43,9 @@ export default function ControlMensual({ razonSocial }) {
   }, [razonSocial, periodo]);
 
   useEffect(() => { cargar(); }, [cargar]);
+  // Al cambiar de período o de razón social vuelve a quedar bloqueado — evita quedarse
+  // desbloqueado sin darse cuenta y tildar algo de otro mes por error.
+  useEffect(() => { setBloqueado(true); }, [razonSocial, periodo]);
 
   async function toggleEnviado(f) {
     const nuevoValor = !f.enviado;
@@ -123,6 +130,14 @@ export default function ControlMensual({ razonSocial }) {
           <option value="factura-b">Factura B</option>
         </select>
         <div className="control-mensual-toolbar-acciones">
+          <button
+            type="button"
+            className={`btn-candado ${bloqueado ? '' : 'desbloqueado'}`}
+            onClick={() => setBloqueado((v) => !v)}
+            title={bloqueado ? 'Desbloqueá para poder tildar comprobantes' : 'Bloqueá para evitar tildar sin querer'}
+          >
+            {bloqueado ? '🔒 Tildado bloqueado' : '🔓 Tildado desbloqueado'}
+          </button>
           <button type="button" className="btn-desglose" onClick={() => setModalManualAbierto(true)}>
             Comprobantes manuales
           </button>
@@ -176,8 +191,8 @@ export default function ControlMensual({ razonSocial }) {
                 {filasFiltradas.map((f) => (
                   <tr
                     key={`${f.origen}-${f.id}`}
-                    className={`fila-clickeable ${f.enviado ? 'fila-seleccionada' : ''}`}
-                    onClick={() => toggleEnviado(f)}
+                    className={`fila-clickeable ${bloqueado ? 'fila-bloqueada' : ''} ${f.enviado ? 'fila-seleccionada' : ''}`}
+                    onClick={() => { if (!bloqueado) toggleEnviado(f); }}
                   >
                     <td>{fechaLabel(f.fecha)}</td>
                     <td className="col-concepto" title={f.tipo_comprobante || ''}>{tipoComprobanteLabel(f.tipo_comprobante) || '—'}</td>
