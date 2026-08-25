@@ -96,6 +96,7 @@ export default function ControlMensual({ razonSocial }) {
     if (filtroEstado === 'no-marcados') return !f.enviado;
     if (filtroEstado === 'factura-a') return (tipoComprobanteLabel(f.tipo_comprobante) || '').includes('Factura A');
     if (filtroEstado === 'factura-b') return (tipoComprobanteLabel(f.tipo_comprobante) || '').includes('Factura B');
+    if (filtroEstado === 'manuales') return f.origen === 'manual';
     return true; // 'todos'
   });
 
@@ -128,6 +129,7 @@ export default function ControlMensual({ razonSocial }) {
           <option value="no-marcados">No marcados</option>
           <option value="factura-a">Factura A</option>
           <option value="factura-b">Factura B</option>
+          <option value="manuales">Manuales</option>
         </select>
         <div className="control-mensual-toolbar-acciones">
           <button
