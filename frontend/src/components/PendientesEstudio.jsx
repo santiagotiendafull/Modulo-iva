@@ -144,6 +144,8 @@ export default function PendientesEstudio({ razonSocial }) {
   const proveedoresConPendientes = [...new Map(filas.map((f) => [f.cuit_contraparte, { cuit: f.cuit_contraparte, denominacion: f.denominacion_contraparte }])).values()]
     .sort((a, b) => normalizar(a.denominacion).localeCompare(normalizar(b.denominacion)));
 
+  const totalIvaListos = filas.filter((f) => seleccionados.has(f.id)).reduce((acc, f) => acc + f.iva, 0);
+
   const topProveedores = pendientes?.kpis.top_proveedores ?? [];
   const totalIvaTopProveedores = topProveedores.reduce((acc, p) => acc + p.iva, 0);
   const totalIvaPendiente = pendientes?.kpis.total_iva ?? 0;
@@ -295,6 +297,7 @@ export default function PendientesEstudio({ razonSocial }) {
                 <InfoTooltip texto="Comprobantes que ya encontraste (tildados) pero todavía no se generó el PDF de envío." />
               </div>
               <div className="card-value">{seleccionados.size}</div>
+              <div className="card-hint">{money(totalIvaListos)} de IVA</div>
             </div>
             <div className="card">
               <div className="card-label">Comprobantes ya enviados</div>
