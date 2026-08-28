@@ -5,6 +5,17 @@ import { money, fechaLabel, periodoLabelCompleto, tipoComprobanteLabel } from '.
 const hoyIso = () => new Date().toISOString().slice(0, 10);
 const CAMPOS_VACIOS = { fecha: hoyIso(), tipo: '', pdv: '', numero: '', proveedorHabitual: '', cuit: '', denominacion: '', iva: '', monto: '' };
 
+// CORREDORES VIALES S.A. (peajes) factura el Importe Total con el IVA ya incluido adentro, sin
+// desglosarlo aparte como el resto de los proveedores — así que acá se calcula solo a partir del
+// total, en vez de tipearlo. 17,355% = 21/121: la porción de IVA de un importe que ya lo incluye a
+// una alícuota del 21%.
+const DENOMINACION_CORREDORES_VIALES = 'CORREDORES VIALES S.A.';
+const PORCENTAJE_IVA_CORREDORES_VIALES = 0.17355;
+
+function esProveedorConIvaAutomatico(denominacion) {
+  return (denominacion || '').trim().toUpperCase() === DENOMINACION_CORREDORES_VIALES;
+}
+
 // Comprobantes de compra que no aparecen en ARCA (peajes, estaciones de servicio, etc.) — se cargan
 // acá a mano, en el mismo orden en que vienen en Mis Comprobantes Recibidos (Fecha, Tipo, PDV, Nro.
 // Operación, Nro. Doc. Emisor, Denominación Emisor, Total IVA, Importe Total), y de ahí pasan solos
@@ -71,12 +82,30 @@ export default function ComprobantesManuales({ razonSocial }) {
     const p = proveedoresHabituales.find((x) => x.cuit === cuit);
     if (p) {
       setCampos((prev) => ({ ...prev, cuit: p.cuit, denominacion: p.denominacion }));
-      refIva.current?.focus(); // ya está el proveedor completo, se salta directo a los montos
-      refIva.current?.select?.();
+      if (esProveedorConIvaAutomatico(p.denominacion)) {
+        // Acá el IVA se calcula solo a partir del Importe Total (ver useEffect más abajo) — se
+        // salta directo a ese campo en vez de al de IVA, que queda bloqueado.
+        refMonto.current?.focus();
+        refMonto.current?.select?.();
+      } else {
+        refIva.current?.focus(); // ya está el proveedor completo, se salta directo a los montos
+        refIva.current?.select?.();
+      }
     } else {
       refCuit.current?.focus();
     }
   }
+
+  const ivaAutomatico = esProveedorConIvaAutomatico(campos.denominacion);
+
+  // Con CORREDORES VIALES S.A. el Importe Total viene con el IVA incluido — el campo de IVA se
+  // recalcula solo cada vez que cambia el importe, no se tipea a mano. Deliberadamente no depende de
+  // setCampo (se recrea en cada render): agregarlo haría correr este efecto de más sin necesidad.
+  useEffect(() => {
+    if (!ivaAutomatico) return;
+    const montoNum = parseFloat(campos.monto);
+    setCampos((prev) => ({ ...prev, iva: Number.isNaN(montoNum) ? '' : (montoNum * PORCENTAJE_IVA_CORREDORES_VIALES).toFixed(2) }));
+  }, [campos.monto, ivaAutomatico]);
 
   async function agregar(e) {
     e.preventDefault();
@@ -210,7 +239,7 @@ export default function ComprobantesManuales({ razonSocial }) {
             />
           </label>
           <label className="campo-manual campo-manual-chico">
-            <span>Total IVA</span>
+            <span>Total IVA{ivaAutomatico ? ' (automático)' : ''}</span>
             <input
               ref={refIva}
               type="number"
@@ -219,6 +248,8 @@ export default function ComprobantesManuales({ razonSocial }) {
               value={campos.iva}
               onChange={(e) => setCampo('iva', e.target.value)}
               onKeyDown={avanzarCon(refMonto)}
+              disabled={ivaAutomatico}
+              title={ivaAutomatico ? `Se calcula solo: Importe Total × ${(PORCENTAJE_IVA_CORREDORES_VIALES * 100).toFixed(3)}%` : undefined}
             />
           </label>
           <label className="campo-manual campo-manual-chico">

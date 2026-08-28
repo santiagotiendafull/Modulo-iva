@@ -100,6 +100,9 @@ export default function ControlMensual({ razonSocial }) {
     return true; // 'todos'
   });
 
+  const totalIvaMes = filas.reduce((acc, f) => acc + (f.iva || 0), 0);
+  const totalIvaMarcado = filas.filter((f) => f.enviado).reduce((acc, f) => acc + (f.iva || 0), 0);
+
   return (
     <div className="control-mensual">
       <p className="nota">
@@ -168,10 +171,12 @@ export default function ControlMensual({ razonSocial }) {
             <div className="card">
               <div className="card-label">Monto total del mes</div>
               <div className="card-value">{money(datos.kpis.monto_total)}</div>
+              <div className="card-hint">{money(totalIvaMes)} de IVA</div>
             </div>
             <div className="card">
               <div className="card-label">Monto marcado</div>
               <div className="card-value">{money(datos.kpis.monto_enviado)}</div>
+              <div className="card-hint">{money(totalIvaMarcado)} de IVA</div>
             </div>
           </div>
 
