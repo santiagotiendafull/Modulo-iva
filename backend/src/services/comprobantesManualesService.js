@@ -7,6 +7,12 @@
 // adelante: no toca el campo "enviado" de los comprobantes que ya estaban cargados.
 import { all, run, get } from '../db.js';
 
+// Mismo criterio que usa el frontend (ComprobantesManuales.jsx) para calcular el IVA de este
+// proveedor puntual: factura el Importe Total con el IVA ya incluido, así que se extrae con
+// 17,355% = 21/121 (la porción de IVA de un importe que ya lo trae incluido a una alícuota del 21%).
+const DENOMINACION_CORREDORES_VIALES = 'CORREDORES VIALES S.A.';
+const PORCENTAJE_IVA_CORREDORES_VIALES = 0.17355;
+
 function normalizarCuit(v) {
   if (v == null || v === '') return null;
   const soloDigitos = String(v).trim().replace(/\.0+$/, '').replace(/[^\d]/g, '');
@@ -76,6 +82,26 @@ export async function agregarComprobanteManual({ razonSocial, fecha, proveedor, 
   );
   if (cuitNorm) await recordarProveedor(cuitNorm, proveedor.trim());
   return get('SELECT * FROM comprobantes_manuales WHERE id = ?', [Number(result.lastInsertRowid)]);
+}
+
+// Corrección puntual, pedida a mano: los comprobantes de CORREDORES VIALES S.A. cargados antes de
+// que el alta nueva calculara el IVA sola tenían el que se haya tipeado en su momento (a veces 0).
+// Recalcula solo esas filas — cualquier otro proveedor queda exactamente como estaba.
+export async function recalcularIvaCorredoresViales(razonSocial) {
+  if (!['NT', 'Target'].includes(razonSocial)) throw new Error('Falta razón social (NT o Target).');
+  const filas = await all(
+    `SELECT id, monto, iva FROM comprobantes_manuales WHERE razon_social = ? AND UPPER(TRIM(proveedor)) = ?`,
+    [razonSocial, DENOMINACION_CORREDORES_VIALES]
+  );
+  const actualizados = [];
+  for (const f of filas) {
+    const ivaNuevo = Math.round(f.monto * PORCENTAJE_IVA_CORREDORES_VIALES * 100) / 100;
+    if (ivaNuevo !== f.iva) {
+      await run('UPDATE comprobantes_manuales SET iva = ? WHERE id = ?', [ivaNuevo, f.id]);
+      actualizados.push({ id: f.id, monto: f.monto, iva_anterior: f.iva, iva_nuevo: ivaNuevo });
+    }
+  }
+  return actualizados;
 }
 
 export async function marcarEnviadoManual(id, enviado) {

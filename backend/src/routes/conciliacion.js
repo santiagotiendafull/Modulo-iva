@@ -25,6 +25,7 @@ import {
   agregarComprobanteManual,
   marcarEnviadoManual,
   eliminarComprobanteManual,
+  recalcularIvaCorredoresViales,
 } from '../services/comprobantesManualesService.js';
 import {
   obtenerControlMensual,
@@ -321,6 +322,19 @@ router.post('/comprobantes-manuales', soloAdminODev, async (req, res) => {
   try {
     const fila = await agregarComprobanteManual({ razonSocial, fecha, proveedor, cuit, tipoComprobante, numero, iva, monto });
     res.json(fila);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Corrección puntual (ver comprobantesManualesService.recalcularIvaCorredoresViales): recalcula el
+// IVA de los comprobantes de CORREDORES VIALES S.A. cargados antes de que el alta nueva lo calculara
+// sola. No toca ningún otro proveedor.
+router.post('/comprobantes-manuales/recalcular-iva-corredores-viales', soloAdminODev, async (req, res) => {
+  const { razon_social: razonSocial } = req.body;
+  try {
+    const actualizados = await recalcularIvaCorredoresViales(razonSocial);
+    res.json({ actualizados: actualizados.length, detalle: actualizados });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
