@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { importarPdfBuffer, parseSoloPdfBuffer, existeHistorico, importarManual } from '../services/historicoService.js';
-import { importarArchivo, previsualizarArchivo, leerFilasXlsx, EMITIDOS_COLS, RECIBIDOS_COLS } from '../services/mesEnCursoService.js';
+import { importarArchivo, previsualizarArchivo, leerFilasXlsx, leerFilasCsv, EMITIDOS_COLS, RECIBIDOS_COLS } from '../services/mesEnCursoService.js';
 import { historialCargas } from '../services/historialCargasService.js';
 import { importarPdfBuffer931, parseSoloPdfBuffer931, existeFormulario931 } from '../services/formulario931Service.js';
 
@@ -17,13 +17,9 @@ const F931_DIR = path.join(DATA_DIR, 'f931');
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const okMime = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/pdf',
-    ];
-    cb(null, okMime.includes(file.mimetype));
-  },
+  // Por extensión, no por MIME: el mimetype que reporta el navegador para .xlsx/.csv varía según
+  // SO/navegador (ya lo vimos con .xls más arriba) — el nombre de archivo es lo único confiable.
+  fileFilter: (req, file, cb) => cb(null, /\.(xlsx|csv|pdf)$/i.test(file.originalname)),
 });
 
 const router = Router();
@@ -49,6 +45,14 @@ function colsDeNombreArchivo(nombre) {
   return esEmitido ? EMITIDOS_COLS : RECIBIDOS_COLS;
 }
 
+// ARCA da "Mis Comprobantes" en .xlsx normalmente, pero cuando el período tiene demasiados
+// comprobantes para bajar en Excel, solo deja exportar un "consulta" en .csv (mismas columnas,
+// separadas por ";" en vez de por celda — ver leerFilasCsv). Se elige el lector según la extensión.
+function tipoYLeerFilasDeNombre(nombre) {
+  if (/\.csv$/i.test(nombre)) return { tipo: 'csv', leerFilas: leerFilasCsv };
+  return { tipo: 'xlsx', leerFilas: leerFilasXlsx };
+}
+
 // Parsea un "Mis Comprobantes Emitidos/Recibidos" sin escribir nada en la base — para poder
 // mostrar de qué razón social/período es antes de confirmar la carga. razon_social (opcional): para
 // el export "consulta" de ARCA, que no trae el CUIT en ningún lado del archivo.
@@ -60,7 +64,7 @@ router.post('/mes-en-curso/preview', upload.single('archivo'), async (req, res) 
 
   try {
     const resultado = await previsualizarArchivo({
-      fileNameOrBuffer: req.file.buffer, nombreArchivo: nombre, tipo: 'xlsx', cols, leerFilas: leerFilasXlsx,
+      fileNameOrBuffer: req.file.buffer, nombreArchivo: nombre, ...tipoYLeerFilasDeNombre(nombre), cols,
       razonSocialManual: req.body.razon_social,
     });
     if (!resultado.razonSocial) {
@@ -84,7 +88,7 @@ router.post('/mes-en-curso', upload.single('archivo'), async (req, res) => {
 
   try {
     const resultado = await importarArchivo({
-      fileNameOrBuffer: req.file.buffer, nombreArchivo: nombre, tipo: 'xlsx', cols, leerFilas: leerFilasXlsx,
+      fileNameOrBuffer: req.file.buffer, nombreArchivo: nombre, ...tipoYLeerFilasDeNombre(nombre), cols,
       razonSocialManual: req.body.razon_social,
     });
     if (!resultado.razonSocial) {

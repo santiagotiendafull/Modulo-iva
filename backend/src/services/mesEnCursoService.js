@@ -160,6 +160,49 @@ export async function leerFilasXlsx(bufferOPath) {
   return rows;
 }
 
+function sinAcentos(s) {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// Campo de una celda del CSV "consulta" de ARCA (separador ";", decimales con ",") normalizado a la
+// misma pinta que ya produce leerFilasXlsx — así normalizarFila no necesita enterarse de qué formato
+// vino: fecha ISO ("2026-08-01") a dd/mm/aaaa, y números con coma decimal ("11628,10", incluido el
+// Tipo de Cambio "1,00") a punto. El resto de los campos (código de tipo, PDV, número, CUIT,
+// denominación) no llevan coma y quedan tal cual.
+function normalizarCampoCsv(valor) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+    const [y, m, d] = valor.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  if (/^-?\d+,\d{1,2}$/.test(valor)) return valor.replace(',', '.');
+  return valor;
+}
+
+// ARCA ofrece este export "consulta" en CSV cuando el período tiene demasiados comprobantes para
+// bajar en Excel. Mismas columnas y mismo orden que el .xlsx (por eso reutiliza EMITIDOS_COLS /
+// RECIBIDOS_COLS tal cual), separadas por ";" en vez de por columna de planilla. No trae fila de
+// título con el CUIT — arranca directo en los encabezados — así que la razón social se busca en el
+// nombre del archivo (ver razonSocialDesdeCsv), no en el contenido.
+export function leerFilasCsv(bufferOPath) {
+  const texto = Buffer.isBuffer(bufferOPath) ? bufferOPath.toString('utf8') : fs.readFileSync(bufferOPath, 'utf8');
+  const lineas = texto.split(/\r?\n/).filter((l) => l.trim() !== '');
+  const indiceEncabezado = lineas.findIndex((linea) => {
+    const primerCampo = linea.split(';')[0]?.trim().replace(/^"|"$/g, '');
+    return sinAcentos(primerCampo || '').toLowerCase().startsWith('fecha');
+  });
+  if (indiceEncabezado === -1) return [];
+  return lineas
+    .slice(indiceEncabezado + 1)
+    .map((linea) => linea.split(';').map((campo) => normalizarCampoCsv(campo.trim().replace(/^"|"$/g, ''))));
+}
+
+// El CSV "consulta" no trae el CUIT en el contenido (arranca directo en los encabezados) — ARCA lo
+// pone en el nombre del archivo que arma para la descarga
+// ("comprobantes_consulta_csv_emitidos_<id>_<CUIT>_<fecha-hora>.csv"), así que se busca ahí.
+export function razonSocialDesdeCsv(nombreArchivo) {
+  return razonSocialDesdeTexto(nombreArchivo || '');
+}
+
 export function leerFilasTextoPlano(filePath, numCampos) {
   const raw = fs.readFileSync(filePath, 'utf8');
   const chunks = raw.split(/(?=\d{2}\/\d{2}\/\d{4},)/).slice(1); // descarta preámbulo + encabezado
@@ -212,6 +255,8 @@ const INSERT_COMPROBANTE_SQL = `
 async function parseArchivo({ fileNameOrBuffer, nombreArchivo, tipo, cols, leerFilas, razonSocialManual }) {
   const detectada = tipo === 'raw'
     ? razonSocialDesdeTextoPlano(fileNameOrBuffer)
+    : tipo === 'csv'
+    ? razonSocialDesdeCsv(nombreArchivo)
     : await razonSocialDesdeXlsx(fileNameOrBuffer);
   const razonSocial = detectada ?? razonSocialManual ?? null;
   if (!razonSocial) return { razonSocial: null, filas: [] };

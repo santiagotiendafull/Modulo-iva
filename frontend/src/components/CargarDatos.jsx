@@ -307,14 +307,14 @@ export default function CargarDatos({ onDatosActualizados, visible }) {
             </span>
             <div>
               <h3>Mis Comprobantes (Emitidos - Recibidos)</h3>
-              <p>Excel "Mis Comprobantes Emitidos" o "Recibidos" de ARCA. La app detecta sola la razón social y el período de cada comprobante.</p>
+              <p>Excel "Mis Comprobantes Emitidos" o "Recibidos" de ARCA (o el CSV de "Consulta" cuando el período tiene demasiados comprobantes para bajar en Excel). La app detecta sola la razón social y el período de cada comprobante.</p>
             </div>
           </div>
 
           <Dropzone
-            accept=".xlsx"
+            accept=".xlsx,.csv"
             multiple
-            label="Arrastrá o elegí uno o varios Excel de comprobantes"
+            label="Arrastrá o elegí uno o varios Excel o CSV de comprobantes"
             hint='El nombre debe incluir "Emitidos" o "Recibidos"'
             onFiles={agregarArchivos}
           />
