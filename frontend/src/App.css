@@ -932,6 +932,8 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
   text-overflow: ellipsis;
 }
 .tabla-conciliacion-comprobantes th:last-child, .tabla-conciliacion-comprobantes td:last-child { padding-right: 0; }
+.tabla-conciliacion-comprobantes th.th-ordenable { cursor: pointer; user-select: none; transition: color 0.12s; }
+.tabla-conciliacion-comprobantes th.th-ordenable:hover { color: var(--accent); }
 .tabla-conciliacion-comprobantes tbody tr.fila-clickeable { cursor: pointer; transition: background 0.12s; }
 .tabla-conciliacion-comprobantes tbody tr.fila-clickeable:hover { background: var(--code-bg); }
 .tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-seleccionada { background: var(--accent-bg); }

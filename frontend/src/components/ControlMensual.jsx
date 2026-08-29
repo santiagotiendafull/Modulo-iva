@@ -24,6 +24,7 @@ export default function ControlMensual({ razonSocial }) {
   const [generandoPdf, setGenerandoPdf] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('todos');
+  const [ordenFecha, setOrdenFecha] = useState('asc'); // 'asc' | 'desc' — clickeando el título de la columna
   const [modalManualAbierto, setModalManualAbierto] = useState(false);
   // Arranca bloqueado a propósito: un click accidental en la fila (al scrollear, seleccionar texto,
   // etc.) tilda o destilda sin querer. Hay que desbloquear a propósito antes de poder tocar algo —
@@ -98,6 +99,11 @@ export default function ControlMensual({ razonSocial }) {
     if (filtroEstado === 'factura-b') return (tipoComprobanteLabel(f.tipo_comprobante) || '').includes('Factura B');
     if (filtroEstado === 'manuales') return f.origen === 'manual';
     return true; // 'todos'
+  });
+
+  const filasOrdenadas = [...filasFiltradas].sort((a, b) => {
+    const cmp = (a.fecha || '').localeCompare(b.fecha || '');
+    return ordenFecha === 'asc' ? cmp : -cmp;
   });
 
   const totalIvaMes = filas.reduce((acc, f) => acc + (f.iva || 0), 0);
@@ -184,7 +190,13 @@ export default function ControlMensual({ razonSocial }) {
             <table className="tabla-conciliacion-comprobantes">
               <thead>
                 <tr>
-                  <th>Fecha</th>
+                  <th
+                    className="th-ordenable"
+                    onClick={() => setOrdenFecha((o) => (o === 'asc' ? 'desc' : 'asc'))}
+                    title={ordenFecha === 'asc' ? 'Ordenado de más antigua a más reciente — click para invertir' : 'Ordenado de más reciente a más antigua — click para invertir'}
+                  >
+                    Fecha {ordenFecha === 'asc' ? '▲' : '▼'}
+                  </th>
                   <th className="col-concepto">Comprobante</th>
                   <th>Origen</th>
                   <th>PDV</th>
@@ -195,7 +207,7 @@ export default function ControlMensual({ razonSocial }) {
                 </tr>
               </thead>
               <tbody>
-                {filasFiltradas.map((f) => (
+                {filasOrdenadas.map((f) => (
                   <tr
                     key={`${f.origen}-${f.id}`}
                     className={`fila-clickeable ${bloqueado ? 'fila-bloqueada' : ''} ${f.enviado ? 'fila-seleccionada' : ''}`}
