@@ -16,6 +16,7 @@ import {
   enviarAEstudio,
   pendientesPorProveedor,
   marcarListo,
+  repararDenominacionesPendientes,
 } from '../services/pendientesEstudioService.js';
 import {
   listarProveedoresManuales,
@@ -31,6 +32,8 @@ import {
   obtenerControlMensual,
   marcarEnviadoArca,
   comprobantesMarcadosParaPdf,
+  registrarEnvioControlMensual,
+  obtenerHistorialControlMensual,
   compararEnvio,
 } from '../services/controlEnvioMensualService.js';
 import { requireRole } from '../middleware/auth.js';
@@ -240,6 +243,18 @@ router.patch('/pendientes-estudio/:id/listo', soloAdminODev, async (req, res) =>
   res.json({ ok: true });
 });
 
+// Corrección puntual (ver pendientesEstudioService.repararDenominacionesPendientes): arregla los
+// nombres de proveedor que llegaron con la Ñ/tilde rota en la planilla del estudio.
+router.post('/pendientes-estudio/reparar-denominaciones', soloAdminODev, async (req, res) => {
+  const { razon_social: razonSocial } = req.body;
+  try {
+    const actualizados = await repararDenominacionesPendientes(razonSocial);
+    res.json({ actualizados: actualizados.length, detalle: actualizados });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.get('/pendientes-estudio/historial', soloAdminODev, async (req, res) => {
   const { razon_social: razonSocial } = req.query;
   if (!['NT', 'Target'].includes(razonSocial)) {
@@ -375,6 +390,9 @@ router.get('/control-mensual/pdf', soloAdminODev, async (req, res) => {
   const { razon_social: razonSocial, periodo } = req.query;
   try {
     const { arca, manual } = await comprobantesMarcadosParaPdf(razonSocial, periodo);
+    // A diferencia de "Lo que pide el estudio", esto no saca nada de comprobantes/comprobantes_
+    // manuales ni cambia el enviado — solo deja anotado que se generó este PDF, para el historial.
+    await registrarEnvioControlMensual(razonSocial, periodo, req.usuario?.username);
     renderTablaPdf(res, {
       nombreArchivo: `control-mensual-${razonSocial}-${periodo}.pdf`,
       titulo: `Control mensual — comprobantes marcados para enviar — ${razonSocial}`,
@@ -387,6 +405,15 @@ router.get('/control-mensual/pdf', soloAdminODev, async (req, res) => {
       notaVacio: 'No hay comprobantes marcados para este período.',
       notaTotal: (n) => `Total de comprobantes marcados: ${n}`,
     });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/control-mensual/historial', soloAdminODev, async (req, res) => {
+  const { razon_social: razonSocial, periodo } = req.query;
+  try {
+    res.json(await obtenerHistorialControlMensual(razonSocial, periodo));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

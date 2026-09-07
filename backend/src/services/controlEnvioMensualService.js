@@ -3,7 +3,7 @@
 // comprobantes_manuales de ese período), con una marca "enviado" que se puede tildar/destildar en
 // cualquier momento. Comparar() cruza esta lista contra pendientes_estudio para detectar cuando el
 // estudio dice que algo falta pero acá ya está marcado como enviado — esa es la señal para reclamarle.
-import { all, run } from '../db.js';
+import { db, all, run } from '../db.js';
 
 // Solo importa para cruzar contra pendientes_estudio, una fuente distinta (Excel del estudio) que
 // puede traer los números con relleno de ceros distinto al export de ARCA. El pdv/numero_desde que
@@ -117,6 +117,59 @@ export async function comprobantesMarcadosParaPdf(razonSocial, periodo) {
     arca: marcados.filter((f) => f.origen === 'arca'),
     manual: marcados.filter((f) => f.origen === 'manual'),
   };
+}
+
+// Deja anotado en envio_control_mensual/envio_control_mensual_item que se generó el PDF de este
+// período, con una copia de qué comprobantes incluyó — mismo control que ya existe en "Lo que pide
+// el estudio" para sus envíos, pero acá NO se borra ni se archiva nada de comprobantes/
+// comprobantes_manuales: Control mensual sigue sin "cerrar el mes", así que se puede volver a
+// descargar el PDF (con la misma selección o distinta) las veces que haga falta, y cada vez queda
+// su propio registro en el historial.
+export async function registrarEnvioControlMensual(razonSocial, periodo, usuario) {
+  const { arca, manual } = await comprobantesMarcadosParaPdf(razonSocial, periodo);
+  const marcados = [...arca, ...manual];
+  if (marcados.length === 0) return null;
+
+  const envioResult = await run(
+    'INSERT INTO envio_control_mensual (razon_social, periodo, usuario, cantidad) VALUES (?, ?, ?, ?)',
+    [razonSocial, periodo, usuario ?? null, marcados.length]
+  );
+  const envioId = Number(envioResult.lastInsertRowid);
+
+  await db.batch(
+    marcados.map((f) => ({
+      sql: `INSERT INTO envio_control_mensual_item
+              (envio_id, origen, fecha, tipo_comprobante, pdv, numero, cuit_contraparte, denominacion_contraparte, iva, total)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [envioId, f.origen, f.fecha, f.tipo_comprobante, f.pdv, f.numero, f.cuit_contraparte, f.denominacion_contraparte, f.iva, f.total],
+    })),
+    'write'
+  );
+
+  return { envio_id: envioId, cantidad: marcados.length };
+}
+
+export async function obtenerHistorialControlMensual(razonSocial, periodo) {
+  if (!['NT', 'Target'].includes(razonSocial)) throw new Error('Falta razón social (NT o Target).');
+  if (!/^\d{4}-\d{2}$/.test(periodo || '')) throw new Error('Falta período (formato YYYY-MM).');
+
+  const envios = await all(
+    'SELECT * FROM envio_control_mensual WHERE razon_social = ? AND periodo = ? ORDER BY fecha_hora DESC',
+    [razonSocial, periodo]
+  );
+  if (envios.length === 0) return [];
+  const ids = envios.map((e) => e.id);
+  const placeholders = ids.map(() => '?').join(',');
+  const items = await all(
+    `SELECT * FROM envio_control_mensual_item WHERE envio_id IN (${placeholders}) ORDER BY id`,
+    ids
+  );
+  const itemsPorEnvio = new Map();
+  for (const it of items) {
+    if (!itemsPorEnvio.has(it.envio_id)) itemsPorEnvio.set(it.envio_id, []);
+    itemsPorEnvio.get(it.envio_id).push(it);
+  }
+  return envios.map((e) => ({ ...e, items: itemsPorEnvio.get(e.id) ?? [] }));
 }
 
 // Cruza tu Control mensual contra lo que dice pendientes_estudio para el mismo período (pendientes_

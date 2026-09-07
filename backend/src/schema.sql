@@ -245,3 +245,34 @@ CREATE TABLE IF NOT EXISTS control_envio_mensual (
   actualizado_en    TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (razon_social, cuit_contraparte, pdv, numero)
 );
+
+-- Historial de "Descargar PDF de los marcados" en Control mensual — mismo control que envio_estudio,
+-- pero acá es solo un registro (no archiva ni saca nada de la lista): Control mensual no tiene
+-- "cerrar el mes", así que descargar el PDF de nuevo con la misma selección tiene que seguir andando
+-- igual. Cada descarga queda anotada acá con fecha/hora, quién la generó y una copia de los
+-- comprobantes que incluyó en ese momento.
+CREATE TABLE IF NOT EXISTS envio_control_mensual (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  razon_social  TEXT NOT NULL CHECK (razon_social IN ('NT', 'Target')),
+  periodo       TEXT NOT NULL,
+  usuario       TEXT,
+  cantidad      INTEGER NOT NULL,
+  fecha_hora    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Copia de los datos del comprobante al momento de generar el PDF (no referencia comprobantes.id ni
+-- comprobantes_manuales.id): así el historial no se rompe si Cargar Datos reemplaza el Excel de ese
+-- período después. "origen" distingue ARCA de cargado a mano, igual que en la pantalla.
+CREATE TABLE IF NOT EXISTS envio_control_mensual_item (
+  id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+  envio_id                  INTEGER NOT NULL REFERENCES envio_control_mensual(id),
+  origen                    TEXT NOT NULL CHECK (origen IN ('arca', 'manual')),
+  fecha                     TEXT,
+  tipo_comprobante          TEXT,
+  pdv                       TEXT,
+  numero                    TEXT,
+  cuit_contraparte          TEXT,
+  denominacion_contraparte  TEXT,
+  iva                       REAL NOT NULL DEFAULT 0,
+  total                     REAL NOT NULL DEFAULT 0
+);

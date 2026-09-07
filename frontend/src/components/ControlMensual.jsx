@@ -10,6 +10,13 @@ function normalizar(texto) {
   return (texto || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
+function fechaHoraLabel(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
 // Checklist propio del mes: a diferencia de "Lo que pide el estudio" (que viene de su Excel), acá el
 // universo sale de Mis Comprobantes (cargado una sola vez en Cargar Datos — no hay import propio
 // acá) + Comprobantes manuales de ese período. Tildar un comprobante significa "lo tengo listo / ya
@@ -19,6 +26,8 @@ function normalizar(texto) {
 export default function ControlMensual({ razonSocial }) {
   const [periodo, setPeriodo] = useState(periodoActual());
   const [datos, setDatos] = useState(null);
+  const [historial, setHistorial] = useState(null);
+  const [envioIdAbierto, setEnvioIdAbierto] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [generandoPdf, setGenerandoPdf] = useState(false);
@@ -35,7 +44,12 @@ export default function ControlMensual({ razonSocial }) {
     setCargando(true);
     setError(null);
     try {
-      setDatos(await api.controlMensual(razonSocial, periodo));
+      const [d, h] = await Promise.all([
+        api.controlMensual(razonSocial, periodo),
+        api.historialControlMensual(razonSocial, periodo),
+      ]);
+      setDatos(d);
+      setHistorial(h);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -75,6 +89,7 @@ export default function ControlMensual({ razonSocial }) {
     setGenerandoPdf(true);
     try {
       await api.pdfControlMensual(razonSocial, periodo);
+      setHistorial(await api.historialControlMensual(razonSocial, periodo));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -230,6 +245,57 @@ export default function ControlMensual({ razonSocial }) {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="tabla-comparativa">
+            <div className="tabla-comparativa-header">
+              <h3>Ya enviados</h3>
+            </div>
+            {(!historial || historial.length === 0) && <p className="bloque-nota">Todavía no se generó ningún envío.</p>}
+            {historial && historial.length > 0 && (
+              <div className="envios-lista">
+                {historial.map((envio) => (
+                  <div key={envio.id} className="envio-item">
+                    <button type="button" className="envio-item-header" onClick={() => setEnvioIdAbierto((v) => (v === envio.id ? null : envio.id))}>
+                      <span>{fechaHoraLabel(envio.fecha_hora)} — {envio.cantidad} comprobantes{envio.usuario ? ` — ${envio.usuario}` : ''}</span>
+                      <span>{envioIdAbierto === envio.id ? '▲' : '▼'}</span>
+                    </button>
+                    {envioIdAbierto === envio.id && (
+                      <div className="tabla-scroll">
+                        <table className="tabla-conciliacion-comprobantes">
+                          <thead>
+                            <tr>
+                              <th>Fecha</th>
+                              <th className="col-concepto">Comprobante</th>
+                              <th>Origen</th>
+                              <th>PDV</th>
+                              <th>Número</th>
+                              <th className="col-concepto">Proveedor</th>
+                              <th>IVA</th>
+                              <th>Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {envio.items.map((it) => (
+                              <tr key={it.id}>
+                                <td>{fechaLabel(it.fecha)}</td>
+                                <td className="col-concepto" title={it.tipo_comprobante}>{tipoComprobanteLabel(it.tipo_comprobante)}</td>
+                                <td>{it.origen === 'manual' ? <span className="origen-pill origen-manual">Manual</span> : 'ARCA'}</td>
+                                <td>{it.pdv || '—'}</td>
+                                <td>{it.numero || '—'}</td>
+                                <td className="col-concepto">{it.denominacion_contraparte || '—'}</td>
+                                <td>{money(it.iva)}</td>
+                                <td>{money(it.total)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}

@@ -149,8 +149,12 @@ export default function PendientesEstudio({ razonSocial }) {
   const topProveedores = pendientes?.kpis.top_proveedores ?? [];
   const totalIvaTopProveedores = topProveedores.reduce((acc, p) => acc + p.iva, 0);
   const totalIvaPendiente = pendientes?.kpis.total_iva ?? 0;
-  const porcentajeTopProveedores = totalIvaPendiente > 0
-    ? `${((totalIvaTopProveedores / totalIvaPendiente) * 100).toFixed(1)}%`
+  // El ranking suma en valor absoluto (una Nota de Crédito cuenta como papeleo pendiente igual que su
+  // Factura, aunque se cancelen entre sí) — el % se compara contra esa misma base, no contra
+  // total_iva (neto), que daría un número sin sentido cuando hay Notas de Crédito de por medio.
+  const totalIvaAbsoluto = pendientes?.kpis.total_iva_absoluto ?? 0;
+  const porcentajeTopProveedores = totalIvaAbsoluto > 0
+    ? `${((totalIvaTopProveedores / totalIvaAbsoluto) * 100).toFixed(1)}%`
     : '—';
 
   // Tildar/destildar queda guardado al toque (papel de trabajo: se va marcando a lo largo del mes a
@@ -319,7 +323,7 @@ export default function PendientesEstudio({ razonSocial }) {
               <div className="tabla-comparativa-header">
                 <h3>
                   Proveedores con más IVA pendiente
-                  <InfoTooltip texto="Suma del IVA pendiente por proveedor, de mayor a menor." />
+                  <InfoTooltip texto="Suma en valor absoluto del IVA pendiente por proveedor, de mayor a menor. Una Nota de Crédito cuenta como papeleo pendiente igual que su Factura, aunque se cancelen entre sí — así no desaparecen del ranking proveedores con mucho movimiento pero poco efecto fiscal neto." />
                 </h3>
               </div>
               <ul className="top-proveedores-lista">
@@ -342,7 +346,7 @@ export default function PendientesEstudio({ razonSocial }) {
                 <div className="top-proveedores-resumen-fila">
                   <span>
                     % sobre el Total IVA pendiente
-                    <InfoTooltip texto="Cuánto representa ese total sobre el Total IVA pendiente de todos los proveedores, no solo el top 5." />
+                    <InfoTooltip texto="Cuánto representa ese total sobre la suma en valor absoluto del IVA de todos los proveedores (no solo el top 5) — misma base que usa el ranking de arriba." />
                   </span>
                   <span className="top-proveedores-resumen-valor">{porcentajeTopProveedores}</span>
                 </div>

@@ -31,51 +31,46 @@ function sinAcentos(s) {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
-// El Excel del estudio no siempre viene con la fecha en un formato prolijo tipo Excel: al ser una
-// planilla que arma el estudio a mano, aparecen variantes (1 o 2 dígitos de día/mes, año de 2 o 4
-// dígitos, separador "-" en vez de "/", ISO "aaaa-mm-dd") y a veces la celda quedó como un número de
-// serie de Excel en vez de una fecha real. Antes solo se aceptaba "dd/mm/aaaa" exacto — cualquier
-// otra cosa quedaba sin fecha (celda vacía en la tabla). Se prueban varios formatos antes de
-// rendirse, para no perder la fecha de un comprobante solo porque el estudio la tipeó distinto.
-function fechaAIso(valorCrudo) {
-  if (valorCrudo == null || valorCrudo === '') return null;
-  const texto = String(valorCrudo).trim();
+// La planilla que arma el estudio a veces trae nombres con la tilde/Ñ rota (ej. "MUÃ‘OZ" en vez de
+// "MUÑOZ"): el archivo de origen ya guardó el texto en UTF-8, pero algún paso previo (excel/planilla
+// de otro sistema) lo volvió a leer como Windows-1252 y lo re-guardó — cada caracter especial quedó
+// separado en dos. Es un patrón determinístico y reversible: se reconstruye el byte original de cada
+// caracter (Latin-1 directo, o los "raros" 0x80-0x9F de Windows-1252 que no coinciden con Latin-1) y
+// se vuelve a decodificar como UTF-8. Si el texto no encaja en el patrón o el resultado no es UTF-8
+// válido, se devuelve tal cual — mejor dejar un nombre raro que arriesgarse a romper uno que ya
+// estaba bien.
+const CP1252_ALTOS = {
+  0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84, 0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87,
+  0x02C6: 0x88, 0x2030: 0x89, 0x0160: 0x8A, 0x2039: 0x8B, 0x0152: 0x8C, 0x017D: 0x8E,
+  0x2018: 0x91, 0x2019: 0x92, 0x201C: 0x93, 0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
+  0x02DC: 0x98, 0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B, 0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F,
+};
 
-  // dd/mm/aaaa o d/m/aaaa (con o sin ceros a la izquierda), separador "/" o "-".
-  const conSeparador = texto.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
-  if (conSeparador) {
-    let [, d, m, y] = conSeparador;
-    if (y.length === 2) y = `20${y}`; // el estudio a veces tipea el año con 2 dígitos
-    const dia = d.padStart(2, '0');
-    const mes = m.padStart(2, '0');
-    if (Number(dia) >= 1 && Number(dia) <= 31 && Number(mes) >= 1 && Number(mes) <= 12) {
-      return `${y}-${mes}-${dia}`;
-    }
+const CARACTER_REEMPLAZO = String.fromCharCode(0xfffd); // no se pudo decodificar como UTF-8 -- la reparacion salio peor que el original
+
+function tieneCaracterFueraDeAscii(texto) {
+  for (let i = 0; i < texto.length; i++) {
+    if (texto.charCodeAt(i) > 0x7f) return true;
   }
+  return false;
+}
 
-  // aaaa-mm-dd (ISO), por si la celda ya venía en ese formato.
-  const iso = texto.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (iso) {
-    const [, y, m, d] = iso;
-    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+export function repararMojibake(texto) {
+  if (!texto) return texto;
+  if (!tieneCaracterFueraDeAscii(texto)) return texto;
+  const bytes = [];
+  for (const ch of texto) {
+    const code = ch.codePointAt(0);
+    if (code <= 0xff) bytes.push(code);
+    else if (CP1252_ALTOS[code] !== undefined) bytes.push(CP1252_ALTOS[code]);
+    else return texto;
   }
-
-  // Número de serie de Excel (días desde el 30/12/1899, con el bug del año bisiesto 1900 que Excel
-  // arrastra a propósito por compatibilidad con Lotus 1-2-3): pasa esto cuando ExcelJS entrega la
-  // celda como número en vez de Date. Rango razonable: años ~2015 a ~2035.
-  const serie = texto.match(/^\d{5}(\.\d+)?$/);
-  if (serie) {
-    const n = parseFloat(texto);
-    if (n >= 42000 && n <= 50000) {
-      const fecha = new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 86400000);
-      const y = fecha.getUTCFullYear();
-      const m = String(fecha.getUTCMonth() + 1).padStart(2, '0');
-      const d = String(fecha.getUTCDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    }
+  try {
+    const reparado = Buffer.from(bytes).toString("utf8");
+    return reparado.includes(CARACTER_REEMPLAZO) ? texto : reparado;
+  } catch {
+    return texto;
   }
-
-  return null;
 }
 
 // Acepta tanto los encabezados de la hoja "Faltantes" (con Estado/Motivo) como los de "Mis
@@ -182,7 +177,7 @@ function parsearHoja(filas, razonSocial, archivoOrigen, nombreHoja) {
       pdv: val('pdv') != null && val('pdv') !== '' ? String(val('pdv')) : null,
       numero: val('numero') != null && val('numero') !== '' ? String(val('numero')) : null,
       cuit_contraparte: cuit,
-      denominacion_contraparte: val('denominacion') != null && val('denominacion') !== '' ? String(val('denominacion')) : null,
+      denominacion_contraparte: val('denominacion') != null && val('denominacion') !== '' ? repararMojibake(String(val('denominacion'))) : null,
       neto_gravado: val('neto_gravado') ? parseFloat(val('neto_gravado')) : 0,
       iva: val('iva') ? parseFloat(val('iva')) : 0,
       total: val('total') ? parseFloat(val('total')) : 0,
@@ -276,12 +271,17 @@ export async function importarHojas(buffer, nombresHojas, razonSocial, archivoOr
 export async function obtenerPendientes(razonSocial) {
   const filas = await all('SELECT * FROM pendientes_estudio WHERE razon_social = ? ORDER BY fecha, numero', [razonSocial]);
 
+  // En valor absoluto, no neto: un proveedor con una Factura y su Nota de Crédito exacta (mismo
+  // importe, signo contrario, las dos igual "pendientes" según el estudio) sumaba $0 neto y
+  // desaparecía del ranking de "más IVA pendiente" aunque tuviera el doble de comprobantes para
+  // encontrar y mandar que cualquier otro — acá lo que importa es cuánto papeleo hay que perseguirle,
+  // no el efecto fiscal neto (que si están las dos puntas, es cero).
   const porProveedor = new Map();
   for (const f of filas) {
     const actual = porProveedor.get(f.cuit_contraparte) || {
       cuit: f.cuit_contraparte, denominacion: f.denominacion_contraparte, iva: 0, cantidad: 0,
     };
-    actual.iva += f.iva;
+    actual.iva += Math.abs(f.iva);
     actual.cantidad += 1;
     porProveedor.set(f.cuit_contraparte, actual);
   }
@@ -298,6 +298,9 @@ export async function obtenerPendientes(razonSocial) {
     filas,
     kpis: {
       total_iva: filas.reduce((acc, f) => acc + f.iva, 0),
+      // Divisor del "top proveedores" para que el % sea contra la misma base (valor absoluto) que
+      // usa ese ranking — comparado contra total_iva (neto) podía dar porcentajes sin sentido.
+      total_iva_absoluto: filas.reduce((acc, f) => acc + Math.abs(f.iva), 0),
       cantidad_pendiente: filas.length,
       cantidad_listos: filas.filter((f) => f.listo).length,
       cantidad_enviados: enviados?.n ?? 0,
@@ -305,6 +308,24 @@ export async function obtenerPendientes(razonSocial) {
       top_proveedores: topProveedores,
     },
   };
+}
+
+// Corrección puntual, pedida a mano: la planilla del estudio ya traía nombres con la Ñ/tilde rota
+// (ver repararMojibake) desde antes de que el import los reparara solo — arregla lo que ya está
+// cargado. No toca nada más de la fila (fecha, montos, listo, etc.), y las que ya estén bien no
+// cambian (repararMojibake las deja intactas).
+export async function repararDenominacionesPendientes(razonSocial) {
+  if (!['NT', 'Target'].includes(razonSocial)) throw new Error('Falta razón social (NT o Target).');
+  const filas = await all('SELECT id, denominacion_contraparte FROM pendientes_estudio WHERE razon_social = ?', [razonSocial]);
+  const actualizados = [];
+  for (const f of filas) {
+    const reparado = repararMojibake(f.denominacion_contraparte);
+    if (reparado !== f.denominacion_contraparte) {
+      await run('UPDATE pendientes_estudio SET denominacion_contraparte = ? WHERE id = ?', [reparado, f.id]);
+      actualizados.push({ id: f.id, antes: f.denominacion_contraparte, despues: reparado });
+    }
+  }
+  return actualizados;
 }
 
 // Papel de trabajo: tildar/destildar un comprobante como "ya lo tenemos" no lo saca de pendientes ni

@@ -194,6 +194,7 @@ export const api = {
     `/conciliacion/control-mensual/pdf?razon_social=${razonSocial}&periodo=${periodo}`,
     `control-mensual-${razonSocial}-${periodo}.pdf`
   ),
+  historialControlMensual: (razonSocial, periodo) => req(`/conciliacion/control-mensual/historial?razon_social=${razonSocial}&periodo=${periodo}`),
   compararEnvio: (razonSocial, periodo) => req(`/conciliacion/control-mensual/comparar?razon_social=${razonSocial}&periodo=${periodo}`),
 
   listarCreditoManual: () => req('/credito-fiscal-manual'),
