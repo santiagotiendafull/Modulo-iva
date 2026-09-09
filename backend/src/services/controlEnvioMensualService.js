@@ -34,13 +34,28 @@ function limpiarNumero(v) {
   return String(v).trim().replace(/\.0+$/, '');
 }
 
+// Claves (cuit|pdv|número, misma normalización que compararEnvio) de los comprobantes que ya
+// integraron algún PDF generado antes para este período — quedan grabadas para siempre en
+// envio_control_mensual_item aunque después se destilde el "enviado". Sirve para no reincluirlos
+// en el próximo PDF (ya se mandaron en papel) y para pintarlos distinto en la pantalla.
+async function clavesYaEnviadas(razonSocial, periodo) {
+  const items = await all(
+    `SELECT i.cuit_contraparte, i.pdv, i.numero
+     FROM envio_control_mensual_item i
+     JOIN envio_control_mensual e ON e.id = i.envio_id
+     WHERE e.razon_social = ? AND e.periodo = ?`,
+    [razonSocial, periodo]
+  );
+  return new Set(items.map((i) => clave(i.cuit_contraparte, i.pdv, i.numero)));
+}
+
 // Todo lo que debería mandarse ese mes: comprobantes de compra ya cargados (Mis Comprobantes) más
 // los cargados a mano (peajes, combustible), unificados en una sola lista con la misma forma.
 export async function obtenerControlMensual(razonSocial, periodo) {
   if (!['NT', 'Target'].includes(razonSocial)) throw new Error('Falta razón social (NT o Target).');
   if (!/^\d{4}-\d{2}$/.test(periodo || '')) throw new Error('Falta período (formato YYYY-MM).');
 
-  const [comprobantesArcaCrudos, marcas, manuales] = await Promise.all([
+  const [comprobantesArcaCrudos, marcas, manuales, yaEnviadas] = await Promise.all([
     all(
       `SELECT id, fecha, tipo_comprobante, pdv, numero_desde as numero, cuit_contraparte, denominacion_contraparte, iva, total
        FROM comprobantes WHERE razon_social = ? AND periodo = ? AND tipo = 'compra'`,
@@ -48,6 +63,7 @@ export async function obtenerControlMensual(razonSocial, periodo) {
     ),
     all('SELECT cuit_contraparte, pdv, numero, enviado FROM control_envio_mensual WHERE razon_social = ?', [razonSocial]),
     all('SELECT * FROM comprobantes_manuales WHERE razon_social = ? AND periodo = ?', [razonSocial, periodo]),
+    clavesYaEnviadas(razonSocial, periodo),
   ]);
   const comprobantesArca = comprobantesArcaCrudos.map((c) => ({ ...c, pdv: limpiarNumero(c.pdv), numero: limpiarNumero(c.numero) }));
 
@@ -67,6 +83,7 @@ export async function obtenerControlMensual(razonSocial, periodo) {
     iva: c.iva,
     total: c.total,
     enviado: marcasPorClave.get(`${c.cuit_contraparte}|${c.pdv}|${c.numero}`) ?? false,
+    ya_enviado: yaEnviadas.has(clave(c.cuit_contraparte, c.pdv, c.numero)),
   }));
 
   const filasManuales = manuales.map((m) => ({
@@ -81,6 +98,7 @@ export async function obtenerControlMensual(razonSocial, periodo) {
     iva: m.iva,
     total: m.monto,
     enviado: !!m.enviado,
+    ya_enviado: yaEnviadas.has(clave(m.cuit_contraparte, null, m.numero)),
   }));
 
   const filas = [...filasArca, ...filasManuales].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
@@ -109,10 +127,12 @@ export async function marcarEnviadoArca(razonSocial, cuitContraparte, pdv, numer
 
 // Separados por origen para que el PDF pueda mostrar los cargados a mano en su propia sección: son
 // comprobantes que no tienen respaldo en ARCA, así que conviene que quede claro cuáles son antes de
-// que el estudio los reciba junto con el resto.
+// que el estudio los reciba junto con el resto. Descarta los que ya integraron un PDF anterior de
+// este mismo período (ya_enviado): si el usuario tilda comprobantes nuevos para mandar otra tanda,
+// el PDF trae solo lo nuevo — lo ya enviado no se repite.
 export async function comprobantesMarcadosParaPdf(razonSocial, periodo) {
   const { filas } = await obtenerControlMensual(razonSocial, periodo);
-  const marcados = filas.filter((f) => f.enviado);
+  const marcados = filas.filter((f) => f.enviado && !f.ya_enviado);
   return {
     arca: marcados.filter((f) => f.origen === 'arca'),
     manual: marcados.filter((f) => f.origen === 'manual'),

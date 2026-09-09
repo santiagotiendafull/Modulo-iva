@@ -110,6 +110,7 @@ export default function ControlMensual({ razonSocial }) {
       && !(f.numero || '').toLowerCase().includes(busquedaN)) return false;
     if (filtroEstado === 'marcados') return f.enviado;
     if (filtroEstado === 'no-marcados') return !f.enviado;
+    if (filtroEstado === 'ya-enviados') return f.ya_enviado;
     if (filtroEstado === 'factura-a') return (tipoComprobanteLabel(f.tipo_comprobante) || '').includes('Factura A');
     if (filtroEstado === 'factura-b') return (tipoComprobanteLabel(f.tipo_comprobante) || '').includes('Factura B');
     if (filtroEstado === 'manuales') return f.origen === 'manual';
@@ -128,9 +129,11 @@ export default function ControlMensual({ razonSocial }) {
     <div className="control-mensual">
       <p className="nota">
         Todo lo que debería mandarse este mes: comprobantes de Mis Comprobantes (cargados en Cargar
-        Datos) más los cargados a mano, juntos. Tildá cada uno a medida que lo tenés listo o ya lo
-        mandaste — queda marcado con color y se guarda aunque después cargues un Excel de ARCA
-        actualizado. Siempre se puede volver a destildar, no hay "cerrar el mes".
+        Datos) más los cargados a mano, juntos. Tildá cada uno a medida que lo tenés listo para
+        mandar — queda marcado en violeta y se guarda aunque después cargues un Excel de ARCA
+        actualizado. Al descargar el PDF, esos comprobantes pasan a verde ("ya enviados") y no se
+        vuelven a incluir si generás otro PDF más adelante en el mismo mes — solo se manda lo nuevo
+        que vayas tildando. Siempre se puede volver a destildar, no hay "cerrar el mes".
       </p>
 
       <div className="control-mensual-toolbar">
@@ -151,6 +154,7 @@ export default function ControlMensual({ razonSocial }) {
           <option value="todos">Todos</option>
           <option value="marcados">Marcados</option>
           <option value="no-marcados">No marcados</option>
+          <option value="ya-enviados">Ya enviados</option>
           <option value="factura-a">Factura A</option>
           <option value="factura-b">Factura B</option>
           <option value="manuales">Manuales</option>
@@ -225,8 +229,9 @@ export default function ControlMensual({ razonSocial }) {
                 {filasOrdenadas.map((f) => (
                   <tr
                     key={`${f.origen}-${f.id}`}
-                    className={`fila-clickeable ${bloqueado ? 'fila-bloqueada' : ''} ${f.enviado ? 'fila-seleccionada' : ''}`}
+                    className={`fila-clickeable ${bloqueado ? 'fila-bloqueada' : ''} ${f.ya_enviado ? 'fila-ya-enviada' : (f.enviado ? 'fila-seleccionada' : '')}`}
                     onClick={() => { if (!bloqueado) toggleEnviado(f); }}
+                    title={f.ya_enviado ? 'Ya se mandó en un PDF anterior de este mes' : ''}
                   >
                     <td>{fechaLabel(f.fecha)}</td>
                     <td className="col-concepto" title={f.tipo_comprobante || ''}>{tipoComprobanteLabel(f.tipo_comprobante) || '—'}</td>

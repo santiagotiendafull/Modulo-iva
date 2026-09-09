@@ -1250,11 +1250,17 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
    resto de las pantallas que reusan .fila-seleccionada. */
 .control-mensual .tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-seleccionada { background: #9384ba; }
 .control-mensual .tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-seleccionada:hover { background: #8676ac; }
+/* Verde: ya integró un PDF generado antes — distinto del violeta ("tildado, todavía sin mandar")
+   para que se note de un vistazo qué falta mandar en la próxima tanda. */
+.control-mensual .tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-ya-enviada { background: #7cae74; }
+.control-mensual .tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-ya-enviada:hover { background: #6f9d68; }
+.control-mensual .tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-ya-enviada td { color: var(--text-h); }
 /* Con el tildado bloqueado, la fila deja de "parecer" clickeable (sin cursor de mano ni hover) pero
    sigue mostrando el color si ya estaba marcada — evita tildar sin querer al mirar/scrollear. */
 .control-mensual .tabla-conciliacion-comprobantes tbody tr.fila-bloqueada { cursor: default; }
 .control-mensual .tabla-conciliacion-comprobantes tbody tr.fila-bloqueada:hover { background: transparent; }
 .control-mensual .tabla-conciliacion-comprobantes tbody tr.fila-bloqueada.fila-seleccionada:hover { background: #9384ba; }
+.control-mensual .tabla-conciliacion-comprobantes tbody tr.fila-bloqueada.fila-ya-enviada:hover { background: #7cae74; }
 
 .btn-candado {
   display: flex;
