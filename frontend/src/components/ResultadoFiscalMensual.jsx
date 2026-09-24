@@ -9,7 +9,7 @@ function origenInfo(m) {
 
 export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSeleccionado, onSeleccionarPeriodo, onDeseleccionar }) {
   const cajaRef = useRef(null);
-  const [anioFiltro, setAnioFiltro] = useState('');
+  const [anioFiltro, setAnioFiltro] = useState(null);
 
   useEffect(() => {
     if (!periodoSeleccionado) return;
@@ -28,8 +28,11 @@ export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSele
 
   if (!meses || meses.length === 0) return null;
   const anios = [...new Set(meses.map((m) => m.periodo.slice(0, 4)))].sort();
+  // Mientras el usuario no elija otro, muestra el año en curso (si hay datos de ese año).
+  const anioActual = String(new Date().getFullYear());
+  const anioEfectivo = anioFiltro ?? (anios.includes(anioActual) ? anioActual : '');
   const ordenados = [...meses]
-    .filter((m) => !anioFiltro || m.periodo.startsWith(anioFiltro))
+    .filter((m) => !anioEfectivo || m.periodo.startsWith(anioEfectivo))
     .sort((a, b) => a.periodo.localeCompare(b.periodo));
 
   return (
@@ -37,7 +40,7 @@ export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSele
       <div className="resultado-fiscal-header">
         <h3>Resultado fiscal por mes — {razonSocial}</h3>
         {anios.length > 1 && (
-          <select value={anioFiltro} onChange={(e) => setAnioFiltro(e.target.value)} className="resultado-fiscal-anio">
+          <select value={anioEfectivo} onChange={(e) => setAnioFiltro(e.target.value)} className="resultado-fiscal-anio">
             <option value="">Todo</option>
             {anios.map((a) => (
               <option key={a} value={a}>{a}</option>
