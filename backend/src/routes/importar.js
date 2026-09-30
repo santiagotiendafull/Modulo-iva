@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { importarPdfBuffer, parseSoloPdfBuffer, existeHistorico, importarManual } from '../services/historicoService.js';
-import { importarArchivo, previsualizarArchivo, leerFilasXlsx, leerFilasCsv, EMITIDOS_COLS, RECIBIDOS_COLS } from '../services/mesEnCursoService.js';
+import { importarArchivo, previsualizarArchivo, leerFilasXlsx, leerFilasCsv, extraerCsvDeZip, EMITIDOS_COLS, RECIBIDOS_COLS } from '../services/mesEnCursoService.js';
 import { historialCargas } from '../services/historialCargasService.js';
 import { importarPdfBuffer931, parseSoloPdfBuffer931, existeFormulario931 } from '../services/formulario931Service.js';
 
@@ -19,7 +19,9 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
   // Por extensión, no por MIME: el mimetype que reporta el navegador para .xlsx/.csv varía según
   // SO/navegador (ya lo vimos con .xls más arriba) — el nombre de archivo es lo único confiable.
-  fileFilter: (req, file, cb) => cb(null, /\.(xlsx|csv|pdf)$/i.test(file.originalname)),
+  // .zip: el "consulta" en CSV que ARCA entrega comprimido cuando el período tiene demasiados
+  // comprobantes (ver extraerCsvDeZip en mesEnCursoService.js).
+  fileFilter: (req, file, cb) => cb(null, /\.(xlsx|csv|pdf|zip)$/i.test(file.originalname)),
 });
 
 const router = Router();
@@ -53,6 +55,18 @@ function tipoYLeerFilasDeNombre(nombre) {
   return { tipo: 'xlsx', leerFilas: leerFilasXlsx };
 }
 
+// El .zip trae el CSV comprimido tal cual lo entrega ARCA — se desempaqueta el CSV de adentro y de
+// ahí en más se procesa igual que un .csv suelto. El nombre que sigue usándose para detectar la
+// razón social y Emitidos/Recibidos es el del .zip subido (trae el mismo patrón que el CSV suelto:
+// "..._emitidos_<id>_<CUIT>_<fecha>.zip"), no el del archivo de adentro.
+async function bufferYFormatoDeArchivo(file) {
+  if (/\.zip$/i.test(file.originalname)) {
+    const { buffer } = await extraerCsvDeZip(file.buffer);
+    return { buffer, tipo: 'csv', leerFilas: leerFilasCsv };
+  }
+  return { buffer: file.buffer, ...tipoYLeerFilasDeNombre(file.originalname) };
+}
+
 // Parsea un "Mis Comprobantes Emitidos/Recibidos" sin escribir nada en la base — para poder
 // mostrar de qué razón social/período es antes de confirmar la carga. razon_social (opcional): para
 // el export "consulta" de ARCA, que no trae el CUIT en ningún lado del archivo.
@@ -63,8 +77,9 @@ router.post('/mes-en-curso/preview', upload.single('archivo'), async (req, res) 
   if (!cols) return res.status(400).json({ error: 'el nombre del archivo debe indicar Emitidos o Recibidos' });
 
   try {
+    const { buffer, tipo, leerFilas } = await bufferYFormatoDeArchivo(req.file);
     const resultado = await previsualizarArchivo({
-      fileNameOrBuffer: req.file.buffer, nombreArchivo: nombre, ...tipoYLeerFilasDeNombre(nombre), cols,
+      fileNameOrBuffer: buffer, nombreArchivo: nombre, tipo, leerFilas, cols,
       razonSocialManual: req.body.razon_social,
     });
     if (!resultado.razonSocial) {
@@ -87,8 +102,9 @@ router.post('/mes-en-curso', upload.single('archivo'), async (req, res) => {
   if (!cols) return res.status(400).json({ error: 'el nombre del archivo debe indicar Emitidos o Recibidos' });
 
   try {
+    const { buffer, tipo, leerFilas } = await bufferYFormatoDeArchivo(req.file);
     const resultado = await importarArchivo({
-      fileNameOrBuffer: req.file.buffer, nombreArchivo: nombre, ...tipoYLeerFilasDeNombre(nombre), cols,
+      fileNameOrBuffer: buffer, nombreArchivo: nombre, tipo, leerFilas, cols,
       razonSocialManual: req.body.razon_social,
     });
     if (!resultado.razonSocial) {

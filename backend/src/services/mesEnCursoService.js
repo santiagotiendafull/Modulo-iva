@@ -3,6 +3,7 @@
 // plano (mismo formato CSV-like, para cuando el binario original no está disponible).
 import fs from 'node:fs';
 import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import { db } from '../db.js';
 // db acá es el cliente crudo de @libsql/client (no el helper get/all/run): se usa .batch() para
 // insertar todas las filas de un archivo en una sola transacción, en vez de un round-trip por fila.
@@ -209,6 +210,24 @@ export function leerFilasTextoPlano(filePath, numCampos) {
   return chunks
     .map((chunk) => chunk.trim().split(',').slice(0, numCampos))
     .filter((fields) => /^\d{2}\/\d{2}\/\d{4}$/.test(fields[0]));
+}
+
+// Cuando el período tiene demasiados comprobantes, ARCA ni siquiera deja bajar el "consulta" en
+// CSV suelto: lo entrega comprimido en un .zip con un único CSV adentro (mismo contenido que
+// leerFilasCsv ya sabe leer). Así se puede subir el .zip tal cual lo bajó ARCA, sin tener que
+// descomprimirlo a mano primero.
+export async function extraerCsvDeZip(buffer) {
+  let zip;
+  try {
+    zip = await JSZip.loadAsync(buffer);
+  } catch {
+    throw new Error('El archivo no es un .zip válido (¿se corrompió al bajarlo?).');
+  }
+  const entradas = Object.values(zip.files).filter((f) => !f.dir && /\.csv$/i.test(f.name));
+  if (entradas.length === 0) throw new Error('El .zip no tiene ningún archivo .csv adentro.');
+  if (entradas.length > 1) throw new Error('El .zip tiene más de un archivo adentro — se esperaba uno solo.');
+  const contenido = await entradas[0].async('nodebuffer');
+  return { nombre: entradas[0].name, buffer: contenido };
 }
 
 // El CUIT del título cae en alguna de las filas antes de los encabezados ("Mis Comprobantes
