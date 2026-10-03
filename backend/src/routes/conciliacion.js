@@ -24,6 +24,7 @@ import {
   eliminarProveedorManual,
   listarComprobantesManuales,
   agregarComprobanteManual,
+  actualizarComprobanteManual,
   marcarEnviadoManual,
   eliminarComprobanteManual,
   recalcularIvaCorredoresViales,
@@ -350,6 +351,15 @@ router.post('/comprobantes-manuales/recalcular-iva-corredores-viales', soloAdmin
   try {
     const actualizados = await recalcularIvaCorredoresViales(razonSocial);
     res.json({ actualizados: actualizados.length, detalle: actualizados });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.put('/comprobantes-manuales/:id', soloAdminODev, async (req, res) => {
+  const { fecha, proveedor, cuit, tipo_comprobante: tipoComprobante, numero, iva, monto } = req.body;
+  try {
+    res.json(await actualizarComprobanteManual(req.params.id, { fecha, proveedor, cuit, tipoComprobante, numero, iva, monto }));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

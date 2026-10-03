@@ -177,6 +177,11 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ razon_social: razonSocial, fecha, proveedor, cuit, tipo_comprobante: tipoComprobante, numero, iva, monto }),
   }),
+  editarComprobanteManual: (id, { fecha, proveedor, cuit, tipoComprobante, numero, iva, monto }) => req(`/conciliacion/comprobantes-manuales/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fecha, proveedor, cuit, tipo_comprobante: tipoComprobante, numero, iva, monto }),
+  }),
   marcarEnviadoManual: (id, enviado) => req(`/conciliacion/comprobantes-manuales/${id}/enviado`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },

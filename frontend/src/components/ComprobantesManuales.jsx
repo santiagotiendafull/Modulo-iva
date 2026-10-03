@@ -32,6 +32,7 @@ export default function ComprobantesManuales({ razonSocial }) {
   const [campos, setCampos] = useState(CAMPOS_VACIOS);
   const [guardando, setGuardando] = useState(false);
   const [estado, setEstado] = useState(null);
+  const [editandoId, setEditandoId] = useState(null);
 
   const refFecha = useRef(null);
   const refTipo = useRef(null);
@@ -42,6 +43,7 @@ export default function ComprobantesManuales({ razonSocial }) {
   const refDenominacion = useRef(null);
   const refIva = useRef(null);
   const refMonto = useRef(null);
+  const refFormCard = useRef(null);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -107,13 +109,36 @@ export default function ComprobantesManuales({ razonSocial }) {
     setCampos((prev) => ({ ...prev, iva: Number.isNaN(montoNum) ? '' : (montoNum * PORCENTAJE_IVA_CORREDORES_VIALES).toFixed(2) }));
   }, [campos.monto, ivaAutomatico]);
 
+  function empezarEdicion(f) {
+    setEditandoId(f.id);
+    setEstado(null);
+    setCampos({
+      fecha: f.fecha,
+      tipo: f.tipo_comprobante || '',
+      pdv: '',
+      numero: f.numero || '',
+      proveedorHabitual: '',
+      cuit: f.cuit_contraparte || '',
+      denominacion: f.proveedor || '',
+      iva: String(f.iva ?? ''),
+      monto: String(f.monto ?? ''),
+    });
+    refFormCard.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    refFecha.current?.focus();
+  }
+
+  function cancelarEdicion() {
+    setEditandoId(null);
+    setCampos(CAMPOS_VACIOS);
+    setEstado(null);
+  }
+
   async function agregar(e) {
     e.preventDefault();
     setGuardando(true);
     setEstado(null);
     try {
-      await api.agregarComprobanteManual({
-        razonSocial,
+      const datos = {
         fecha: campos.fecha,
         proveedor: campos.denominacion,
         cuit: campos.cuit,
@@ -121,9 +146,17 @@ export default function ComprobantesManuales({ razonSocial }) {
         numero: campos.numero || null,
         iva: campos.iva,
         monto: campos.monto,
-      });
-      setEstado({ tipo: 'ok', mensaje: `Comprobante de ${campos.denominacion} cargado para ${razonSocial}.` });
-      setCampos({ ...CAMPOS_VACIOS, fecha: campos.fecha }); // la fecha se mantiene: se suele cargar varios del mismo día seguidos
+      };
+      if (editandoId != null) {
+        await api.editarComprobanteManual(editandoId, datos);
+        setEstado({ tipo: 'ok', mensaje: `Comprobante de ${campos.denominacion} actualizado.` });
+        setEditandoId(null);
+        setCampos(CAMPOS_VACIOS);
+      } else {
+        await api.agregarComprobanteManual({ razonSocial, ...datos });
+        setEstado({ tipo: 'ok', mensaje: `Comprobante de ${campos.denominacion} cargado para ${razonSocial}.` });
+        setCampos({ ...CAMPOS_VACIOS, fecha: campos.fecha }); // la fecha se mantiene: se suele cargar varios del mismo día seguidos
+      }
       await cargar();
       refFecha.current?.focus();
     } catch (err) {
@@ -137,6 +170,7 @@ export default function ComprobantesManuales({ razonSocial }) {
     if (!window.confirm('¿Borrar este comprobante cargado a mano?')) return;
     try {
       await api.eliminarComprobanteManual(id);
+      if (id === editandoId) cancelarEdicion();
       await cargar();
     } catch (err) {
       setError(err.message);
@@ -155,10 +189,10 @@ export default function ComprobantesManuales({ razonSocial }) {
         Enter para pasar al siguiente campo.
       </p>
 
-      <div className="fuente-card">
+      <div className="fuente-card" ref={refFormCard}>
         <div className="fuente-card-header">
           <div>
-            <h3>Cargar comprobante — {razonSocial}</h3>
+            <h3>{editandoId != null ? `Editar comprobante — ${razonSocial}` : `Cargar comprobante — ${razonSocial}`}</h3>
           </div>
         </div>
         <form className="comprobante-manual-form" onSubmit={agregar}>
@@ -265,8 +299,13 @@ export default function ComprobantesManuales({ razonSocial }) {
             />
           </label>
           <button type="submit" className="btn-desglose" disabled={guardando}>
-            {guardando ? 'Guardando…' : 'Agregar (Enter)'}
+            {guardando ? 'Guardando…' : (editandoId != null ? 'Guardar cambios (Enter)' : 'Agregar (Enter)')}
           </button>
+          {editandoId != null && (
+            <button type="button" className="btn-desglose" onClick={cancelarEdicion} disabled={guardando}>
+              Cancelar
+            </button>
+          )}
         </form>
         {estado && <p className={`estado-mensaje ${estado.tipo}`}>{estado.mensaje}</p>}
       </div>
@@ -303,7 +342,7 @@ export default function ComprobantesManuales({ razonSocial }) {
               </thead>
               <tbody>
                 {filasFiltradas.map((f) => (
-                  <tr key={f.id}>
+                  <tr key={f.id} className={f.id === editandoId ? 'fila-seleccionada' : ''}>
                     <td>{fechaLabel(f.fecha)}</td>
                     <td className="col-concepto">{tipoComprobanteLabel(f.tipo_comprobante) || '—'}</td>
                     <td>{f.numero || '—'}</td>
@@ -312,9 +351,10 @@ export default function ComprobantesManuales({ razonSocial }) {
                     <td>{money(f.iva)}</td>
                     <td>{money(f.monto)}</td>
                     <td>{f.enviado ? 'Sí' : 'No'}</td>
-                    <td>
-                      <button type="button" className="staged-item-quitar" onClick={() => borrar(f.id)} aria-label="Borrar">×</button>
-                    </td>
+                    <td><div className="acciones-fila">
+                      <button type="button" className="staged-item-quitar staged-item-editar" onClick={() => empezarEdicion(f)} aria-label="Editar" title="Editar">✎</button>
+                      <button type="button" className="staged-item-quitar" onClick={() => borrar(f.id)} aria-label="Borrar" title="Borrar">×</button>
+                    </div></td>
                   </tr>
                 ))}
                 {filasFiltradas.length === 0 && (

@@ -64,7 +64,7 @@ export async function listarComprobantesManuales(razonSocial, periodo) {
   return all('SELECT * FROM comprobantes_manuales WHERE razon_social = ? ORDER BY fecha DESC, id DESC', [razonSocial]);
 }
 
-export async function agregarComprobanteManual({ razonSocial, fecha, proveedor, cuit, tipoComprobante, numero, iva, monto }) {
+function validarComprobanteManual({ razonSocial, fecha, proveedor, cuit, iva, monto }) {
   if (!['NT', 'Target'].includes(razonSocial)) throw new Error('Falta razón social (NT o Target).');
   if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new Error('Fecha inválida (formato YYYY-MM-DD).');
   if (!proveedor || !proveedor.trim()) throw new Error('Falta el proveedor.');
@@ -72,9 +72,11 @@ export async function agregarComprobanteManual({ razonSocial, fecha, proveedor, 
   if (Number.isNaN(ivaNum) || ivaNum < 0) throw new Error('El IVA debe ser un número.');
   const montoNum = parseFloat(monto);
   if (Number.isNaN(montoNum) || montoNum < 0) throw new Error('El importe total debe ser un número.');
+  return { ivaNum, montoNum, cuitNorm: normalizarCuit(cuit), periodo: fecha.slice(0, 7) };
+}
 
-  const cuitNorm = normalizarCuit(cuit);
-  const periodo = fecha.slice(0, 7);
+export async function agregarComprobanteManual({ razonSocial, fecha, proveedor, cuit, tipoComprobante, numero, iva, monto }) {
+  const { ivaNum, montoNum, cuitNorm, periodo } = validarComprobanteManual({ razonSocial, fecha, proveedor, cuit, iva, monto });
   const result = await run(
     `INSERT INTO comprobantes_manuales (razon_social, fecha, periodo, proveedor, cuit_contraparte, tipo_comprobante, numero, iva, monto, enviado)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
@@ -82,6 +84,23 @@ export async function agregarComprobanteManual({ razonSocial, fecha, proveedor, 
   );
   if (cuitNorm) await recordarProveedor(cuitNorm, proveedor.trim());
   return get('SELECT * FROM comprobantes_manuales WHERE id = ?', [Number(result.lastInsertRowid)]);
+}
+
+// Edita un comprobante ya cargado (corregir un dato mal tipeado). No toca razón social ni la marca
+// "enviado" — esa se sigue manejando desde Control mensual. Ojo: el tilde de "ya enviado" en un PDF
+// anterior se identifica por CUIT + número, así que cambiar alguno de esos dos lo desvincula del envío.
+export async function actualizarComprobanteManual(id, { fecha, proveedor, cuit, tipoComprobante, numero, iva, monto }) {
+  const actual = await get('SELECT * FROM comprobantes_manuales WHERE id = ?', [id]);
+  if (!actual) throw new Error('El comprobante no existe (¿lo borraron?).');
+  const { ivaNum, montoNum, cuitNorm, periodo } = validarComprobanteManual({ razonSocial: actual.razon_social, fecha, proveedor, cuit, iva, monto });
+  await run(
+    `UPDATE comprobantes_manuales
+     SET fecha = ?, periodo = ?, proveedor = ?, cuit_contraparte = ?, tipo_comprobante = ?, numero = ?, iva = ?, monto = ?
+     WHERE id = ?`,
+    [fecha, periodo, proveedor.trim(), cuitNorm, tipoComprobante || null, numero || null, ivaNum, montoNum, id]
+  );
+  if (cuitNorm) await recordarProveedor(cuitNorm, proveedor.trim());
+  return get('SELECT * FROM comprobantes_manuales WHERE id = ?', [id]);
 }
 
 // Corrección puntual, pedida a mano: los comprobantes de CORREDORES VIALES S.A. cargados antes de

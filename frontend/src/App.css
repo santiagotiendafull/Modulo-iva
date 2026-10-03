@@ -790,6 +790,8 @@ select:disabled { opacity: 0.55; cursor: default; }
 }
 .staged-item-quitar:hover { border-color: var(--bad); color: var(--bad); }
 .staged-item-quitar:disabled { opacity: 0.5; cursor: not-allowed; }
+.staged-item-quitar.staged-item-editar:hover { border-color: var(--accent); color: var(--accent); }
+.acciones-fila { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
 
 .btn-cargar-todo {
   align-self: flex-start;
