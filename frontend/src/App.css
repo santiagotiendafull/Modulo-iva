@@ -447,6 +447,8 @@ select:disabled { opacity: 0.55; cursor: default; }
 .resultado-fiscal-anio { font-size: 13px; }
 /* Corte de ejercicio: el primer mes de un año nuevo se separa del anterior con una línea marcada. */
 .resultado-fiscal tbody tr.fila-abre-anio td { border-top: 2px solid var(--text-h); }
+/* Cierre de cada año: suma de sus meses, resaltada para distinguirla de una fila de mes. */
+.resultado-fiscal tbody tr.fila-subtotal-anio td { font-weight: 700; background: var(--code-bg); border-top: 2px solid var(--text-h); cursor: default; }
 .resultado-fiscal table { font-size: 13.5px; }
 .resultado-fiscal th {
   text-align: right;

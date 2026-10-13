@@ -1,10 +1,30 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { money, periodoLabel, esCierreDeMes } from '../format';
 
 function origenInfo(m) {
   if (m.origen !== 'actual') return { texto: 'DDJJ', clase: 'historico' };
   if (esCierreDeMes(m.periodo, m.ultima_fecha)) return { texto: 'Pendiente DDJJ', clase: 'estimado' };
   return { texto: 'Mes en curso', clase: 'actual' };
+}
+
+// Cierra el bloque de cada año con la suma de sus meses. Saldo Resultante se suma tal cual la
+// columna (a favor positivo, a pagar negativo) — es la sumatoria pedida, no el saldo acumulado.
+function FilaSubtotalAnio({ anio, meses }) {
+  const suma = (campo) => meses.reduce((acc, m) => acc + (m[campo] ?? 0), 0);
+  const saldo = suma('saldo_tecnico');
+  const aFavor = saldo >= 0;
+  return (
+    <tr className="fila-subtotal-anio">
+      <td className="col-concepto">Subtotal {anio}</td>
+      <td>{money(suma('iva_ventas'))}</td>
+      <td>{money(suma('iva_compras'))}</td>
+      <td>{money(suma('diferencia'))}</td>
+      <td></td>
+      <td className={`col-total ${aFavor ? 'pos' : 'neg'}`}>
+        {money(Math.abs(saldo))} {aFavor ? '(a favor)' : '(a pagar)'}
+      </td>
+    </tr>
+  );
 }
 
 export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSeleccionado, onSeleccionarPeriodo, onDeseleccionar }) {
@@ -69,9 +89,11 @@ export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSele
               // Primer mes de un año nuevo: lleva una línea más marcada arriba para separar
               // visualmente un ejercicio del otro.
               const abreAnio = i > 0 && m.periodo.slice(0, 4) !== ordenados[i - 1].periodo.slice(0, 4);
+              const anio = m.periodo.slice(0, 4);
+              const cierraAnio = i === ordenados.length - 1 || ordenados[i + 1].periodo.slice(0, 4) !== anio;
               return (
+                <Fragment key={m.periodo}>
                 <tr
-                  key={m.periodo}
                   className={`${seleccionada ? 'fila-seleccionada' : ''} ${abreAnio ? 'fila-abre-anio' : ''}`.trim()}
                   onClick={() => onSeleccionarPeriodo?.(m.periodo)}
                 >
@@ -87,6 +109,8 @@ export default function ResultadoFiscalMensual({ razonSocial, meses, periodoSele
                     {money(Math.abs(m.saldo_tecnico))} {aFavor ? '(a favor)' : '(a pagar)'}
                   </td>
                 </tr>
+                {cierraAnio && <FilaSubtotalAnio anio={anio} meses={ordenados.filter((x) => x.periodo.startsWith(anio))} />}
+                </Fragment>
               );
             })}
           </tbody>
