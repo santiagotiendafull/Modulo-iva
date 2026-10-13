@@ -20,6 +20,14 @@ export function periodoLabelCompleto(periodo) {
   return `${meses[parseInt(m, 10) - 1]} ${y}`;
 }
 
+// Fecha y hora de una marca de la base (SQLite la guarda en UTC, sin "T" ni "Z").
+export function fechaHoraLabel(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
 export function fechaLabel(iso) {
   if (!iso) return '';
   const [y, m, d] = iso.split('-');

@@ -202,6 +202,14 @@ export const api = {
   historialControlMensual: (razonSocial, periodo) => req(`/conciliacion/control-mensual/historial?razon_social=${razonSocial}&periodo=${periodo}`),
   compararEnvio: (razonSocial, periodo) => req(`/conciliacion/control-mensual/comparar?razon_social=${razonSocial}&periodo=${periodo}`),
 
+  proyecciones: (razonSocial) => req(`/proyecciones?razon_social=${razonSocial}`),
+  guardarProyeccion: (payload) => req('/proyecciones', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }),
+  eliminarProyeccion: (id) => req(`/proyecciones/${id}`, { method: 'DELETE' }),
+
   listarCreditoManual: () => req('/credito-fiscal-manual'),
   agregarCreditoManual: (razonSocial, periodo, monto, descripcion) => req('/credito-fiscal-manual', {
     method: 'POST',

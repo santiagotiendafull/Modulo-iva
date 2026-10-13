@@ -10,6 +10,7 @@ import CargarDatos from './components/CargarDatos';
 import Proveedores from './components/Proveedores';
 import Conciliacion from './components/Conciliacion';
 import Configuracion from './components/Configuracion';
+import Proyeccion from './components/Proyeccion';
 import Login, { sesionGuardada, borrarSesion } from './components/Login';
 import { EvolucionSkeleton } from './components/DashboardSkeleton';
 import Spinner from './components/Spinner';
@@ -219,6 +220,11 @@ export default function App() {
               <button className={`nav-tab ${vista === 'conciliacion' ? 'active' : ''}`} onClick={() => irA('conciliacion')}>
                 Conciliación
               </button>
+              {puedeVerCargarProveedores && (
+                <button className={`nav-tab ${vista === 'proyeccion' ? 'active' : ''}`} onClick={() => irA('proyeccion')}>
+                  Proyección
+                </button>
+              )}
             </nav>
             {puedeVerCargarProveedores && visible('nav.cargar-datos') && (
               <button className={`nav-tab-standalone ${vista === 'cargar-datos' ? 'active' : ''}`} onClick={() => irA('cargar-datos')}>
@@ -250,6 +256,8 @@ export default function App() {
           <Proveedores onCambio={recargarTodo} />
         ) : vista === 'configuracion' && esDev ? (
           <Configuracion />
+        ) : vista === 'proyeccion' && puedeVerCargarProveedores ? (
+          <Proyeccion evoluciones={evoluciones} />
         ) : vista === 'conciliacion' ? (
           <Conciliacion rol={rol} visible={visible} />
         ) : !cargaInicialLista ? (

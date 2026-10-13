@@ -7,6 +7,7 @@ import proveedoresRouter from './routes/proveedores.js';
 import conciliacionRouter from './routes/conciliacion.js';
 import configuracionRouter from './routes/configuracion.js';
 import creditoFiscalManualRouter from './routes/creditoFiscalManual.js';
+import proyeccionesRouter from './routes/proyecciones.js';
 import authRouter from './routes/auth.js';
 import { requireAuth, requireRole } from './middleware/auth.js';
 
@@ -27,6 +28,8 @@ app.use('/api/proveedores', requireAuth, requireRole('administrador', 'dev'), pr
 app.use('/api/conciliacion', requireAuth, conciliacionRouter);
 app.use('/api/configuracion', requireAuth, configuracionRouter);
 app.use('/api/credito-fiscal-manual', requireAuth, creditoFiscalManualRouter);
+// Proyección (simulador del cierre de año): solo administrador/dev, la ruta se restringe adentro.
+app.use('/api/proyecciones', requireAuth, proyeccionesRouter);
 
 // La base (Turso o archivo local, ver db.js) hay que prepararla antes de aceptar pedidos. Esto
 // corre una vez por instancia del proceso — en Vercel, una vez por "cold start" de la función

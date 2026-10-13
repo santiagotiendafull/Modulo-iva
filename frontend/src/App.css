@@ -1386,3 +1386,45 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
   cursor: pointer;
 }
 .modal-cerrar:hover { background: var(--accent-bg); color: var(--accent); }
+
+/* Proyección del año (simulador de cierre de IVA) */
+.proyeccion { display: flex; flex-direction: column; gap: 20px; }
+.proyeccion-encabezado { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.proyeccion-encabezado h2 { font-size: 18px; margin-right: auto; }
+.proyeccion-controles { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+.proyeccion .campo-manual { display: flex; flex-direction: column; gap: 4px; min-width: 220px; }
+.proyeccion .campo-manual > span { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.proyeccion-objetivo { display: flex; gap: 8px; }
+.proyeccion-objetivo input { flex: 1 1 140px; min-width: 120px; }
+.proyeccion input[type="number"],
+.proyeccion input[type="text"],
+.proyeccion select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-h);
+  font-family: inherit;
+  font-size: 13px;
+}
+.proyeccion input:focus, .proyeccion select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.proyeccion-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-h); cursor: pointer; padding-bottom: 8px; }
+.proyeccion-tabla tbody tr { cursor: default; }
+.proyeccion-tabla tbody tr:hover { background: transparent; }
+.proyeccion-tabla tbody tr.fila-subtotal-anio:hover { background: var(--code-bg); }
+.proyeccion-tabla td:first-child, .proyeccion-tabla th:first-child { text-align: left; }
+.proy-input { width: 150px; text-align: right; font-variant-numeric: tabular-nums; }
+.proy-sub { font-size: 11px; color: var(--text-muted); font-weight: 400; white-space: normal; max-width: 260px; }
+.proy-restablecer { padding: 3px 10px; font-size: 11.5px; margin-left: 8px; }
+.proyeccion-guardar { display: flex; gap: 10px; flex-wrap: wrap; }
+.proyeccion-guardar input { flex: 1 1 320px; }
+.proy-escenario-detalle { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+.proy-escenario-detalle table { font-size: 13px; width: 100%; }
+.proy-escenario-detalle th { text-align: right; font-size: 11.5px; text-transform: uppercase; color: var(--text-muted); padding: 0 0 8px; }
+.proy-escenario-detalle td { text-align: right; padding: 7px 0; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.proy-escenario-detalle td.col-concepto, .proy-escenario-detalle th.col-concepto { text-align: left; }
+.proy-escenario-detalle td.col-total.pos { color: var(--good); font-weight: 700; }
+.proy-escenario-detalle td.col-total.neg { color: var(--bad); font-weight: 700; }
+.proy-escenario-detalle .btn-desglose { align-self: flex-start; }
+.proyeccion-tabla th, .proyeccion-tabla td { padding-left: 18px; }
+.proyeccion-tabla th:first-child, .proyeccion-tabla td:first-child { padding-left: 0; }

@@ -276,3 +276,21 @@ CREATE TABLE IF NOT EXISTS envio_control_mensual_item (
   iva                       REAL NOT NULL DEFAULT 0,
   total                     REAL NOT NULL DEFAULT 0
 );
+
+-- Escenarios guardados de la pantalla "Proyección" (cómo terminaría el año en IVA). Es solo para
+-- consultar lo que se simuló: no alimenta ningún cálculo del resto de la app. "datos" es el JSON con
+-- los parámetros (base de estimación, si se ajustó al objetivo) y los 12 meses tal como se vieron
+-- (real/proyectado, débito, crédito, saldo), así el escenario se ve igual aunque después cambien los
+-- datos reales.
+CREATE TABLE IF NOT EXISTS proyeccion_escenario (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  razon_social  TEXT NOT NULL CHECK (razon_social IN ('NT', 'Target')),
+  anio          INTEGER NOT NULL,
+  nombre        TEXT NOT NULL,
+  objetivo      REAL,
+  saldo_final   REAL NOT NULL,
+  usuario       TEXT,
+  datos         TEXT NOT NULL,
+  creado_en     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_proyeccion_escenario_razon ON proyeccion_escenario (razon_social, anio);
