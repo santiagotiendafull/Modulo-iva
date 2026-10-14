@@ -1428,3 +1428,4 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
 .proy-escenario-detalle .btn-desglose { align-self: flex-start; }
 .proyeccion-tabla th, .proyeccion-tabla td { padding-left: 18px; }
 .proyeccion-tabla th:first-child, .proyeccion-tabla td:first-child { padding-left: 0; }
+.proy-leyenda-claro { display: inline-block; width: 14px; height: 10px; border-radius: 2px; background: var(--text-muted); opacity: 0.45; margin-right: 6px; }

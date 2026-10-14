@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { api } from '../api';
 import { money, periodoLabel, periodoLabelCompleto, fechaLabel, fechaHoraLabel } from '../format';
 import { BASES, calcularProyeccion } from '../proyeccion';
@@ -7,6 +7,11 @@ import InfoTooltip from './InfoTooltip';
 import Spinner from './Spinner';
 
 const RAZONES = ['Target', 'NT'];
+const COLOR_FAVOR = '#0ca30c';
+const COLOR_PAGAR = '#d03b3b';
+// Alícuota general: solo sirve para dar una idea de cuánta venta neta representa un Débito de más.
+const ALICUOTA_REFERENCIA = 0.21;
+
 const redondear = (n) => Math.round(n * 100) / 100;
 const numero = (texto) => {
   const n = parseFloat(texto);
@@ -18,6 +23,7 @@ function saldoTexto(n) {
   return `${money(Math.abs(n))} ${n >= 0 ? '(a favor)' : '(a pagar)'}`;
 }
 const claseSaldo = (n) => (n >= 0 ? 'pos' : 'neg');
+const porcentaje = (v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(0)}%`;
 
 const ESTADO_PILL = {
   real: { texto: 'Real', clase: 'origen-historico' },
@@ -30,41 +36,38 @@ function estadoDeFila(f) {
 }
 
 function TooltipSaldo({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
-  const visibles = payload.filter((p) => p.value != null);
+  if (!active || !payload?.length || payload[0].value == null) return null;
   return (
     <div className="chart-tooltip">
-      <div className="chart-tooltip-fecha">{label}</div>
-      {visibles.map((p) => (
-        <div key={p.dataKey} className="chart-tooltip-fila">
-          <span className="chart-tooltip-linea" style={{ background: p.color }} />
-          <span className="chart-tooltip-nombre">{p.name}</span>
-          <span className="chart-tooltip-valor">{money(p.value)}</span>
-        </div>
-      ))}
+      <div className="chart-tooltip-fecha">{label}{payload[0].payload.proyectado ? ' (proyectado)' : ''}</div>
+      <div className="chart-tooltip-fila">
+        <span className="chart-tooltip-nombre">Saldo resultante</span>
+        <span className="chart-tooltip-valor">{saldoTexto(payload[0].value)}</span>
+      </div>
     </div>
   );
 }
 
-function GraficoSaldo({ filas, objetivo }) {
-  const ultimoReal = filas.map((f) => f.tipo).lastIndexOf('real');
-  const data = filas.map((f, i) => ({
+// Barras verdes (a favor) y rojas (a pagar): lo que suma y lo que resta al Neto del año. Los meses
+// proyectados se ven con el color más claro.
+function GraficoSaldo({ filas }) {
+  const data = filas.map((f) => ({
     mes: periodoLabel(f.periodo).slice(0, 3),
-    real: f.tipo === 'real' ? f.saldo : null,
-    // El tramo proyectado arranca desde el último mes real para que la línea no quede cortada.
-    proyectado: f.tipo === 'proyectado' || i === ultimoReal ? f.saldo : null,
+    saldo: f.sinDatos ? null : f.saldo,
+    proyectado: f.tipo === 'proyectado',
   }));
   return (
     <div className="evolucion">
       <div className="evolucion-header">
-        <h3>Saldo técnico mes a mes</h3>
+        <h3>Saldo resultante mes a mes (verde suma, rojo resta)</h3>
         <div className="evolucion-leyenda">
-          <span className="leyenda-item" style={{ '--serie-color': '#2a78d6' }}><span className="leyenda-linea" />Real</span>
-          <span className="leyenda-item" style={{ '--serie-color': '#e34948' }}><span className="leyenda-linea" />Proyectado</span>
+          <span className="leyenda-item" style={{ '--serie-color': COLOR_FAVOR }}><span className="leyenda-linea" />A favor</span>
+          <span className="leyenda-item" style={{ '--serie-color': COLOR_PAGAR }}><span className="leyenda-linea" />A pagar</span>
+          <span className="leyenda-item"><span className="proy-leyenda-claro" />Más claro: proyectado</span>
         </div>
       </div>
       <ResponsiveContainer width="100%" height={260}>
-        <LineChart data={data} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
+        <BarChart data={data} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
           <XAxis dataKey="mes" tick={{ fontSize: 12 }} stroke="var(--text)" tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
           <YAxis
@@ -74,20 +77,20 @@ function GraficoSaldo({ filas, objetivo }) {
             axisLine={false}
             tickFormatter={(v) => new Intl.NumberFormat('es-AR', { notation: 'compact' }).format(v)}
           />
-          <ReferenceLine y={0} stroke="var(--border)" strokeDasharray="3 3" />
-          {objetivo != null && (
-            <ReferenceLine y={objetivo} stroke="#0ca30c" strokeDasharray="6 4" label={{ value: 'Objetivo', position: 'insideTopRight', fill: '#0ca30c', fontSize: 12, fontWeight: 700 }} />
-          )}
-          <Tooltip content={<TooltipSaldo />} />
-          <Line type="monotone" dataKey="real" name="Real" stroke="#2a78d6" strokeWidth={2} dot={{ r: 3 }} connectNulls isAnimationActive={false} />
-          <Line type="monotone" dataKey="proyectado" name="Proyectado" stroke="#e34948" strokeWidth={2} strokeDasharray="6 4" dot={{ r: 3 }} connectNulls isAnimationActive={false} />
-        </LineChart>
+          <ReferenceLine y={0} stroke="var(--text)" />
+          <Tooltip content={<TooltipSaldo />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+          <Bar dataKey="saldo" isAnimationActive={false} radius={[3, 3, 3, 3]}>
+            {data.map((d) => (
+              <Cell key={d.mes} fill={d.saldo != null && d.saldo < 0 ? COLOR_PAGAR : COLOR_FAVOR} fillOpacity={d.proyectado ? 0.45 : 1} />
+            ))}
+          </Bar>
+        </BarChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-function TablaMeses({ meses }) {
+function TablaMeses({ meses, neto }) {
   return (
     <div className="tabla-scroll">
       <table>
@@ -113,10 +116,27 @@ function TablaMeses({ meses }) {
               </tr>
             );
           })}
+          {neto != null && (
+            <tr className="fila-subtotal-anio">
+              <td className="col-concepto">Neto del año</td>
+              <td /><td /><td />
+              <td className={`col-total ${claseSaldo(neto)}`}>{saldoTexto(neto)}</td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>
   );
+}
+
+function resumenEscenario(e) {
+  if (e.objetivo_tipo === 'neto') {
+    const objetivo = e.objetivo == null ? 'sin objetivo' : `objetivo neto ${saldoTexto(e.objetivo)}`;
+    return `${objetivo} — neto del año ${saldoTexto(e.neto)}`;
+  }
+  // Escenarios guardados antes de que el objetivo pasara a ser el Neto: apuntaban al saldo de diciembre.
+  const objetivo = e.objetivo == null ? 'sin objetivo' : `objetivo (saldo de diciembre) ${saldoTexto(e.objetivo)}`;
+  return `${objetivo} — terminaba diciembre en ${saldoTexto(e.saldo_final)}`;
 }
 
 function EscenariosGuardados({ razonSocial, escenarios, cargando, onEliminar }) {
@@ -133,9 +153,7 @@ function EscenariosGuardados({ razonSocial, escenarios, cargando, onEliminar }) 
           {escenarios.map((e) => (
             <div key={e.id} className="envio-item">
               <button type="button" className="envio-item-header" onClick={() => setAbierto((v) => (v === e.id ? null : e.id))}>
-                <span>
-                  <strong>{e.nombre}</strong> — {e.anio} — {e.objetivo == null ? 'sin objetivo' : `objetivo ${saldoTexto(e.objetivo)}`} — termina en {saldoTexto(e.saldo_final)}
-                </span>
+                <span><strong>{e.nombre}</strong> — {e.anio} — {resumenEscenario(e)}</span>
                 <span>{abierto === e.id ? '▲' : '▼'}</span>
               </button>
               {abierto === e.id && (
@@ -143,9 +161,12 @@ function EscenariosGuardados({ razonSocial, escenarios, cargando, onEliminar }) 
                   <p className="card-hint">
                     Guardado el {fechaHoraLabel(e.creado_en)}{e.usuario ? ` por ${e.usuario}` : ''}.
                     {' '}Base de estimación: {BASES.find((b) => b.clave === e.base_modo)?.label ?? '—'}.
-                    {' '}{e.ajustar_al_objetivo ? 'Los meses sin editar se ajustaron para llegar al objetivo.' : 'Los meses sin editar siguieron la tendencia.'}
+                    {' '}{e.ajustar_al_objetivo
+                      ? `Los meses sin editar se ajustaron para llegar al objetivo${e.palanca ? ` moviendo ${e.palanca === 'debito' ? 'la facturación (Débito)' : 'las compras (Crédito)'}` : ''}.`
+                      : 'Los meses sin editar siguieron la tendencia.'}
+                    {e.iva_pendiente > 0 && ` IVA de compras pendientes de facturar: ${money(e.iva_pendiente)}.`}
                   </p>
-                  <TablaMeses meses={e.meses} />
+                  <TablaMeses meses={e.meses} neto={e.objetivo_tipo === 'neto' ? e.neto : null} />
                   <button
                     type="button"
                     className="btn-desglose"
@@ -163,9 +184,11 @@ function EscenariosGuardados({ razonSocial, escenarios, cargando, onEliminar }) 
   );
 }
 
-// Simulador del cierre de año. Los meses cerrados salen de los datos reales y no se tocan; de los
-// meses que faltan, los que el usuario no modificó se calculan solos — o para llegar al objetivo, o
-// siguiendo la tendencia — y los que modifica a mano quedan fijos. Ver proyeccion.js para la cuenta.
+// Simulador del cierre de año. El objetivo es el Neto del año: la suma de los Saldos Resultantes de los
+// 12 meses (los a favor suman, los a pagar restan), igual que el subtotal del Dashboard. Los meses
+// cerrados salen de los datos reales y no se tocan; de los que faltan, los que el usuario no modificó se
+// calculan solos — para llegar al objetivo o siguiendo la tendencia — y los que modifica a mano quedan
+// fijos. Ver proyeccion.js para la cuenta.
 export default function Proyeccion({ evoluciones }) {
   const anioActual = new Date().getFullYear();
   const [razonSocial, setRazonSocial] = useState('Target');
@@ -173,6 +196,8 @@ export default function Proyeccion({ evoluciones }) {
   const [objetivoTexto, setObjetivoTexto] = useState('');
   const [objetivoSigno, setObjetivoSigno] = useState('favor');
   const [baseModo, setBaseModo] = useState('prom3');
+  const [palanca, setPalanca] = useState('debito');
+  const [pendienteTexto, setPendienteTexto] = useState('');
   const [ajustar, setAjustar] = useState(true);
   // { 'YYYY-MM': { debito: '123', credito: '45' } } — texto tal cual se tipea, para poder borrar y
   // escribir sin que el campo salte; se convierte a número recién al calcular.
@@ -211,13 +236,15 @@ export default function Proyeccion({ evoluciones }) {
     return objetivoSigno === 'favor' ? n : -n;
   }, [objetivoTexto, objetivoSigno]);
 
+  const ivaPendiente = Math.max(0, numero(pendienteTexto));
+
   const resultado = useMemo(() => {
     if (!evolucion) return null;
     const editadosNumericos = Object.fromEntries(
       Object.entries(editados).map(([p, v]) => [p, { debito: numero(v.debito), credito: numero(v.credito) }])
     );
-    return calcularProyeccion({ evolucion, anio, baseModo, objetivo, ajustar, editados: editadosNumericos });
-  }, [evolucion, anio, baseModo, objetivo, ajustar, editados]);
+    return calcularProyeccion({ evolucion, anio, baseModo, objetivo, ajustar, editados: editadosNumericos, palanca, ivaPendiente });
+  }, [evolucion, anio, baseModo, objetivo, ajustar, editados, palanca, ivaPendiente]);
 
   function cambiarRazonSocial(r) {
     setRazonSocial(r);
@@ -259,6 +286,9 @@ export default function Proyeccion({ evoluciones }) {
         nombre,
         objetivo,
         saldo_final: resultado.saldoFinal,
+        neto: resultado.neto,
+        palanca,
+        iva_pendiente: ivaPendiente,
         base_modo: baseModo,
         ajustar_al_objetivo: ajustar && objetivo != null,
         meses: resultado.filas.map((f) => ({
@@ -300,6 +330,7 @@ export default function Proyeccion({ evoluciones }) {
   const sumaDebito = filas.reduce((a, f) => a + f.debito, 0);
   const sumaCredito = filas.reduce((a, f) => a + f.credito, 0);
   const sumaDiferencia = filas.reduce((a, f) => a + f.diferencia, 0);
+  const facturarDeMas = resultado.facturarDeMas;
 
   return (
     <div className="proyeccion">
@@ -316,16 +347,20 @@ export default function Proyeccion({ evoluciones }) {
       </div>
 
       <p className="nota">
-        Simulá cómo terminaría el año en IVA. Los meses cerrados salen de los datos reales y no se tocan.
-        De los que faltan, poné con qué saldo querés terminar diciembre y la app calcula cuánto Crédito
-        Fiscal necesitás por mes (con un Débito estimado), repartido parejo entre los meses que no
-        modificaste. Si cambiás un mes a mano queda fijo y el resto se reajusta.
+        Simulá cómo terminaría el año en IVA. El resultado del año es el <strong>Neto</strong>: la suma del Saldo
+        Resultante de los 12 meses (los meses a favor suman, los a pagar restan). Los meses cerrados salen de los
+        datos reales y no se tocan. Poné el Neto con el que querés terminar y la app calcula cuánto habría que
+        facturar (o cuánto Crédito juntar) por mes en los meses que faltan, teniendo en cuenta las compras que
+        todavía no te facturaron. Si cambiás un mes a mano queda fijo y el resto se reajusta.
       </p>
 
       <div className="fuente-card">
         <div className="proyeccion-controles">
           <label className="campo-manual">
-            <span>Quiero terminar diciembre con</span>
+            <span>
+              Quiero que el Neto del año sea de
+              <InfoTooltip texto="Neto del año = suma del Saldo Resultante de los 12 meses: los meses a favor (verde) suman y los a pagar (rojo) restan. Es el mismo Subtotal que ves al pie de cada año en 'Resultado fiscal por mes' del Dashboard." />
+            </span>
             <div className="proyeccion-objetivo">
               <input
                 type="number"
@@ -336,15 +371,39 @@ export default function Proyeccion({ evoluciones }) {
                 onChange={(e) => setObjetivoTexto(e.target.value)}
               />
               <select value={objetivoSigno} onChange={(e) => setObjetivoSigno(e.target.value)} aria-label="A favor o a pagar">
-                <option value="favor">Saldo a favor</option>
-                <option value="pagar">Saldo a pagar</option>
+                <option value="favor">Neto a favor</option>
+                <option value="pagar">Neto a pagar</option>
               </select>
             </div>
           </label>
           <label className="campo-manual">
             <span>
-              Base para estimar el Débito
-              <InfoTooltip texto="Cuánto se estima de Débito Fiscal en los meses que faltan. También es la referencia con la que se compara el Crédito necesario." />
+              IVA de compras pendientes de facturar
+              <InfoTooltip texto="IVA de compras que ya hiciste pero el proveedor todavía no te facturó. Se suma al Crédito Fiscal de los meses que faltan, repartido parejo entre los meses sin modificar." />
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0"
+              value={pendienteTexto}
+              onChange={(e) => setPendienteTexto(e.target.value)}
+            />
+          </label>
+          <label className="campo-manual">
+            <span>
+              Para llegar al objetivo, ajustar
+              <InfoTooltip texto="Qué se mueve en los meses sin modificar: la facturación (Débito Fiscal) o las compras (Crédito Fiscal). Lo otro sigue la tendencia." />
+            </span>
+            <select value={palanca} onChange={(e) => setPalanca(e.target.value)}>
+              <option value="debito">Cuánto facturo (Débito Fiscal)</option>
+              <option value="credito">Cuántas compras consigo (Crédito Fiscal)</option>
+            </select>
+          </label>
+          <label className="campo-manual">
+            <span>
+              Base para estimar
+              <InfoTooltip texto="Con qué meses se estiman el Débito y el Crédito de referencia de los meses que faltan. También es contra lo que se compara cuánto hay que facturar de más." />
             </span>
             <select value={baseModo} onChange={(e) => setBaseModo(e.target.value)}>
               {BASES.map((b) => <option key={b.clave} value={b.clave}>{b.label}</option>)}
@@ -372,12 +431,16 @@ export default function Proyeccion({ evoluciones }) {
               <div className={`card-value ${claseSaldo(saldoActual)}`}>{saldoTexto(saldoActual)}</div>
             </div>
             <div className="card">
-              <div className="card-label">Objetivo a diciembre</div>
+              <div className="card-label">Objetivo: Neto del año</div>
               <div className="card-value">{objetivo == null ? '—' : saldoTexto(objetivo)}</div>
             </div>
             <div className="card">
-              <div className="card-label">Terminarías en</div>
-              <div className={`card-value ${claseSaldo(resultado.saldoFinal)}`}>{saldoTexto(resultado.saldoFinal)}</div>
+              <div className="card-label">
+                Neto del año proyectado
+                <InfoTooltip texto="Suma del Saldo Resultante de los 12 meses con los números de la tabla (los a favor suman, los a pagar restan)." />
+              </div>
+              <div className={`card-value ${claseSaldo(resultado.neto)}`}>{saldoTexto(resultado.neto)}</div>
+              <div className="card-hint">Saldo de diciembre: {saldoTexto(resultado.saldoFinal)}</div>
             </div>
             <div className="card">
               <div className="card-label">Diferencia contra el objetivo</div>
@@ -386,38 +449,71 @@ export default function Proyeccion({ evoluciones }) {
                 <div className="card-hint">
                   {Math.abs(resultado.brecha) < 1
                     ? 'Llegás justo al objetivo'
-                    : (resultado.brecha > 0 ? 'Terminarías con más saldo a favor que el objetivo' : 'Te faltaría saldo a favor para llegar al objetivo')}
+                    : (resultado.brecha > 0 ? 'El Neto queda por encima del objetivo' : 'El Neto queda por debajo del objetivo')}
                 </div>
               )}
             </div>
             {resolucion && (
-              <>
-                <div className="card">
-                  <div className="card-label">
-                    Diferencia neta por mes
-                    <InfoTooltip texto="Débito − Crédito que tiene que dar cada mes sin modificar para llegar al objetivo. Positivo: se consume saldo a favor; negativo: el crédito supera al débito y el saldo crece." />
-                  </div>
-                  <div className="card-value">{money(resolucion.d)}</div>
-                  <div className="card-hint">en {resultado.cantidadLibres} {resultado.cantidadLibres === 1 ? 'mes' : 'meses'} sin modificar</div>
+              <div className="card">
+                <div className="card-label">
+                  Diferencia neta por mes
+                  <InfoTooltip texto="Débito − Crédito que tiene que dar cada mes sin modificar para llegar al objetivo. Positivo: el mes consume saldo a favor o genera a pagar; negativo: el crédito supera al débito." />
                 </div>
-                <div className="card">
-                  <div className="card-label">
-                    Crédito Fiscal necesario por mes
-                    <InfoTooltip texto="Crédito promedio que necesitás en los meses sin modificar, dado el Débito estimado. Es lo que hay que juntar en comprobantes de compra." />
-                  </div>
-                  <div className="card-value">{money(resultado.creditoNecesario)}</div>
-                  {resultado.variacionCredito != null && (
-                    <div className={`card-hint ${resultado.variacionCredito > 0.5 ? 'card-hint-pagar' : ''}`}>
-                      {resultado.variacionCredito >= 0 ? '+' : ''}{(resultado.variacionCredito * 100).toFixed(0)}% sobre tu referencia ({money(resultado.creditoReferencia)})
-                    </div>
-                  )}
+                <div className="card-value">{money(resolucion.d)}</div>
+                <div className="card-hint">en {resultado.cantidadLibres} {resultado.cantidadLibres === 1 ? 'mes' : 'meses'} sin modificar</div>
+              </div>
+            )}
+            {resolucion && palanca === 'debito' && (
+              <div className="card">
+                <div className="card-label">
+                  {facturarDeMas >= 0 ? 'Facturar de más por mes' : 'Facturar de menos por mes'}
+                  <InfoTooltip texto="Cuánto Débito Fiscal (IVA de ventas) hay que facturar por mes contra el promedio de la base elegida, para llegar al objetivo con las compras pendientes de facturar ya sumadas al Crédito." />
                 </div>
-              </>
+                <div className={`card-value ${facturarDeMas > 0 ? 'neg' : 'pos'}`}>{money(Math.abs(facturarDeMas))}</div>
+                <div className="card-hint">
+                  Débito necesario {money(resultado.debitoNecesario)} contra {money(resultado.debitoReferencia)} de promedio
+                  {resultado.variacionDebito != null && ` (${porcentaje(resultado.variacionDebito)})`}
+                </div>
+                <div className="card-hint">
+                  En total {money(Math.abs(facturarDeMas) * resultado.cantidadLibres)} en {resultado.cantidadLibres} {resultado.cantidadLibres === 1 ? 'mes' : 'meses'} · equivale a unos {money(Math.abs(facturarDeMas) / ALICUOTA_REFERENCIA)} de ventas netas por mes (aprox., a {ALICUOTA_REFERENCIA * 100}%)
+                </div>
+              </div>
+            )}
+            {resolucion && palanca === 'credito' && (
+              <div className="card">
+                <div className="card-label">
+                  Crédito Fiscal necesario por mes
+                  <InfoTooltip texto="Crédito promedio que necesitás en los meses sin modificar, dado el Débito de la tendencia. Se compara contra tu promedio más el IVA de compras pendientes de facturar." />
+                </div>
+                <div className="card-value">{money(resultado.creditoNecesario)}</div>
+                {resultado.variacionCredito != null && (
+                  <div className={`card-hint ${resultado.variacionCredito > 0.5 ? 'card-hint-pagar' : ''}`}>
+                    {porcentaje(resultado.variacionCredito)} sobre tu referencia ({money(resultado.creditoReferencia)}
+                    {resultado.pendientePorMes > 0 ? ', ya con el IVA pendiente' : ''})
+                  </div>
+                )}
+                <div className="card-hint">
+                  {resultado.creditoNecesario > resultado.creditoReferencia
+                    ? `Faltaría conseguir ${money(resultado.creditoNecesario - resultado.creditoReferencia)} más por mes`
+                    : 'Con tu promedio y lo pendiente ya alcanza'}
+                </div>
+              </div>
+            )}
+            {resultado.pendienteTotal > 0 && (
+              <div className="card">
+                <div className="card-label">IVA de compras pendientes</div>
+                <div className="card-value">{money(resultado.pendienteTotal)}</div>
+                <div className="card-hint">
+                  {resultado.pendienteSinUsar
+                    ? 'No se está usando: todos los meses están modificados a mano'
+                    : `${money(resultado.pendientePorMes)} por mes de Crédito extra en ${resultado.cantidadLibres} ${resultado.cantidadLibres === 1 ? 'mes' : 'meses'}`}
+                </div>
+              </div>
             )}
           </div>
 
           {ajustar && objetivo == null && (
-            <p className="bloque-nota">Poné un objetivo para calcular cuánto Crédito Fiscal necesitás por mes. Mientras tanto los meses siguen la tendencia de la base elegida.</p>
+            <p className="bloque-nota">Poné un objetivo para calcular cuánto hay que facturar. Mientras tanto los meses siguen la tendencia de la base elegida.</p>
           )}
           {ajustar && objetivo != null && !resolucion && (
             <p className="bloque-nota">No queda ningún mes sin modificar para ajustar: el resultado es solo lo que cargaste a mano.</p>
@@ -427,13 +523,19 @@ export default function Proyeccion({ evoluciones }) {
           )}
           {resultado.mesesCreditoNegativo.length > 0 && (
             <p className="error-banner">
-              Con el Débito estimado el objetivo es inalcanzable: el Crédito de {resultado.mesesCreditoNegativo.map(periodoLabel).join(', ')} tendría
-              que ser negativo. Probá con otra base para el Débito o un objetivo menos exigente.
+              Con el Débito de la tendencia el objetivo es inalcanzable: el Crédito de {resultado.mesesCreditoNegativo.map(periodoLabel).join(', ')} tendría
+              que ser negativo. Probá ajustando la facturación (Débito) o con un objetivo menos exigente.
+            </p>
+          )}
+          {resultado.mesesDebitoNegativo.length > 0 && (
+            <p className="error-banner">
+              Para llegar al objetivo el Débito de {resultado.mesesDebitoNegativo.map(periodoLabel).join(', ')} tendría que ser negativo
+              (no se puede facturar menos que cero). Probá ajustando las compras (Crédito) o con un objetivo menos exigente.
             </p>
           )}
           {resultado.mesesAPagar.length > 0 && (
             <p className="bloque-nota">
-              Con estos números {resultado.mesesAPagar.map(periodoLabel).join(', ')} cerrarían a pagar. Ese saldo no se arrastra al mes siguiente (se paga con la DDJJ).
+              Con estos números {resultado.mesesAPagar.map(periodoLabel).join(', ')} cerrarían a pagar. Ese saldo no se arrastra al mes siguiente (se paga con la DDJJ), pero sí resta al Neto.
             </p>
           )}
         </>
@@ -500,21 +602,24 @@ export default function Proyeccion({ evoluciones }) {
                 );
               })}
               <tr className="fila-subtotal-anio">
-                <td className="col-concepto">Total {anio}</td>
+                <td className="col-concepto">Neto {anio}</td>
                 <td />
                 <td>{money(sumaDebito)}</td>
                 <td>{money(sumaCredito)}</td>
                 <td>{money(sumaDiferencia)}</td>
                 <td />
-                <td className={`col-total ${claseSaldo(resultado.saldoFinal)}`}>{saldoTexto(resultado.saldoFinal)}</td>
+                <td className={`col-total ${claseSaldo(resultado.neto)}`}>{saldoTexto(resultado.neto)}</td>
                 <td />
               </tr>
             </tbody>
           </table>
         </div>
+        <p className="resultado-fiscal-hint">
+          Neto del año = suma del Saldo Resultante de los 12 meses (verde suma, rojo resta). Saldo de diciembre: {saldoTexto(resultado.saldoFinal)}.
+        </p>
       </div>
 
-      <GraficoSaldo filas={filas} objetivo={objetivo} />
+      <GraficoSaldo filas={filas} />
 
       {resultado.hayMesesProyectados && (
         <div className="fuente-card">
@@ -528,7 +633,7 @@ export default function Proyeccion({ evoluciones }) {
             <input
               type="text"
               maxLength={80}
-              placeholder="Nombre (ej. Terminar con 20 millones a favor)"
+              placeholder="Nombre (ej. Neto de 200 millones facturando más)"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && nombre.trim() && !guardando) guardar(); }}

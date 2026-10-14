@@ -34,7 +34,7 @@ export async function listarEscenarios(razonSocial) {
   return filas.map(({ datos, ...resto }) => ({ ...resto, ...JSON.parse(datos) }));
 }
 
-export async function guardarEscenario({ razonSocial, anio, nombre, objetivo, saldoFinal, baseModo, ajustarAlObjetivo, meses }, usuario) {
+export async function guardarEscenario({ razonSocial, anio, nombre, objetivo, saldoFinal, neto, palanca, ivaPendiente, baseModo, ajustarAlObjetivo, meses }, usuario) {
   if (!RAZONES.includes(razonSocial)) throw new Error('Falta razón social (NT o Target).');
   const anioNum = Number(anio);
   if (!Number.isInteger(anioNum) || anioNum < 2000 || anioNum > 2100) throw new Error('Año inválido.');
@@ -44,7 +44,17 @@ export async function guardarEscenario({ razonSocial, anio, nombre, objetivo, sa
   if (!Array.isArray(meses) || meses.length === 0 || meses.length > 12) throw new Error('Faltan los meses del escenario.');
 
   const objetivoNum = objetivo == null || objetivo === '' ? null : numero(objetivo, 'objetivo');
+  if (!['debito', 'credito'].includes(palanca)) throw new Error('Palanca inválida (débito o crédito).');
+  const pendienteNum = ivaPendiente == null || ivaPendiente === '' ? 0 : numero(ivaPendiente, 'IVA pendiente');
+  if (pendienteNum < 0) throw new Error('El IVA pendiente no puede ser negativo.');
+
+  // objetivo_tipo 'neto': el objetivo es la suma de los Saldos Resultantes del año (verde suma, rojo
+  // resta), no el saldo de diciembre como en los primeros escenarios guardados (sin este campo).
   const datos = {
+    objetivo_tipo: 'neto',
+    neto: numero(neto, 'neto'),
+    palanca,
+    iva_pendiente: pendienteNum,
     base_modo: String(baseModo || ''),
     ajustar_al_objetivo: !!ajustarAlObjetivo,
     meses: meses.map(validarMes),
