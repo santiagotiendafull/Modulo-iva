@@ -34,7 +34,7 @@ export async function listarEscenarios(razonSocial) {
   return filas.map(({ datos, ...resto }) => ({ ...resto, ...JSON.parse(datos) }));
 }
 
-export async function guardarEscenario({ razonSocial, anio, nombre, objetivo, saldoFinal, neto, palanca, ivaPendiente, compraAdicional, baseModo, ajustarAlObjetivo, meses }, usuario) {
+export async function guardarEscenario({ razonSocial, anio, nombre, objetivo, saldoFinal, neto, palanca, ivaPendiente, compraAdicional, creditoFijo, baseModo, ajustarAlObjetivo, meses }, usuario) {
   if (!RAZONES.includes(razonSocial)) throw new Error('Falta razón social (NT o Target).');
   const anioNum = Number(anio);
   if (!Number.isInteger(anioNum) || anioNum < 2000 || anioNum > 2100) throw new Error('Año inválido.');
@@ -49,6 +49,8 @@ export async function guardarEscenario({ razonSocial, anio, nombre, objetivo, sa
   if (pendienteNum < 0) throw new Error('El IVA pendiente no puede ser negativo.');
   const compraNum = compraAdicional == null || compraAdicional === '' ? 0 : numero(compraAdicional, 'compra adicional');
   if (compraNum < 0) throw new Error('La compra adicional no puede ser negativa.');
+  const fijoNum = creditoFijo == null || creditoFijo === '' ? 0 : numero(creditoFijo, 'IVA Crédito Fiscal fijo');
+  if (fijoNum < 0) throw new Error('El IVA Crédito Fiscal fijo no puede ser negativo.');
 
   // objetivo_tipo 'neto': el objetivo es la suma de los Saldos Resultantes del año (verde suma, rojo
   // resta), no el saldo de diciembre como en los primeros escenarios guardados (sin este campo).
@@ -58,6 +60,7 @@ export async function guardarEscenario({ razonSocial, anio, nombre, objetivo, sa
     palanca,
     iva_pendiente: pendienteNum,
     compra_adicional: compraNum,
+    credito_fijo: fijoNum,
     base_modo: String(baseModo || ''),
     ajustar_al_objetivo: !!ajustarAlObjetivo,
     meses: meses.map(validarMes),

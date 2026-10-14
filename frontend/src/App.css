@@ -1429,3 +1429,4 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
 .proyeccion-tabla th, .proyeccion-tabla td { padding-left: 18px; }
 .proyeccion-tabla th:first-child, .proyeccion-tabla td:first-child { padding-left: 0; }
 .proy-leyenda-claro { display: inline-block; width: 14px; height: 10px; border-radius: 2px; background: var(--text-muted); opacity: 0.45; margin-right: 6px; }
+.proy-dif { margin-top: 4px; font-size: 11px; font-weight: 600; color: var(--text-muted); white-space: nowrap; text-align: right; }

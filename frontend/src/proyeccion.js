@@ -56,17 +56,19 @@ export function saldoInicialDelAnio(evolucion, anio) {
   return previos.length ? previos.at(-1).saldo_tecnico : 0;
 }
 
-// Valores de referencia de Débito y Crédito para un mes proyectado, según la base elegida.
+// Débito de referencia (el "promedio") para un mes proyectado, según la base elegida. Solo se estima el
+// Débito: el Crédito proyectado no sale de los meses anteriores sino de lo que se cargue a mano
+// (IVA pendiente de facturar, compras adicionales y un IVA fijo por mes).
 export function estimarBase(evolucion, periodo, modo) {
   const reales = evolucion.filter(esMesReal).sort((a, b) => a.periodo.localeCompare(b.periodo));
   const promedioUltimos = (n) => {
     const previos = reales.filter((m) => m.periodo < periodo).slice(-n);
-    return { debito: promedio(previos.map((m) => m.iva_ventas)), credito: promedio(previos.map((m) => m.iva_compras)) };
+    return { debito: promedio(previos.map((m) => m.iva_ventas)) };
   };
   if (modo === 'anioAnterior') {
     const [anio, mes] = periodo.split('-');
     const mismoMes = reales.find((m) => m.periodo === `${Number(anio) - 1}-${mes}`);
-    if (mismoMes) return { debito: mismoMes.iva_ventas, credito: mismoMes.iva_compras };
+    if (mismoMes) return { debito: mismoMes.iva_ventas };
     return promedioUltimos(3); // sin dato del año anterior, se usa la tendencia reciente
   }
   return promedioUltimos(modo === 'prom6' ? 6 : 3);
@@ -98,80 +100,85 @@ export function netoDelAnio(filas) {
 }
 
 // Valores de los meses "libres" (proyectados que el usuario no tocó) para una diferencia neta `d`
-// (Débito − Crédito) repetida igual en cada uno. Según la palanca, lo que se mueve es:
-//  - 'debito': cuánto se factura. El Crédito se queda en la tendencia (más el IVA de compras que
-//    todavía no facturaron los proveedores) y el Débito se calcula sobre eso.
-//  - 'credito': cuántas compras se consiguen. El Débito se queda en la tendencia y el Crédito se calcula.
-function aplicarLibres(filas, d, palanca, extraPorMes) {
+// (Débito − Crédito) repetida igual en cada uno. El Crédito de un mes libre es siempre
+// `creditoPorMes` (lo que se cargó: IVA pendiente, compras adicionales y monto fijo). Según la palanca:
+//  - 'debito': cuánto se factura. El Crédito queda en `creditoPorMes` y el Débito se calcula sobre eso.
+//  - 'credito': cuántas compras se consiguen. El Débito se queda en el promedio y el Crédito se calcula.
+function aplicarLibres(filas, d, palanca, creditoPorMes) {
   return filas.map((f) => {
     if (!f.libre) return f;
     if (palanca === 'credito') return { ...f, debito: f.debitoBase, credito: f.debitoBase - d };
-    const credito = f.creditoBase + extraPorMes;
-    return { ...f, credito, debito: credito + d };
+    return { ...f, credito: creditoPorMes, debito: creditoPorMes + d };
   });
 }
 
-function netoConDiferencia(filas, saldoInicial, d, palanca, extraPorMes) {
-  return netoDelAnio(simular(aplicarLibres(filas, d, palanca, extraPorMes), saldoInicial));
+function netoConDiferencia(filas, saldoInicial, d, palanca, creditoPorMes) {
+  return netoDelAnio(simular(aplicarLibres(filas, d, palanca, creditoPorMes), saldoInicial));
 }
 
 // Busca la diferencia neta que, repetida igual en todos los meses libres, deja el Neto del año en el
 // objetivo. Es una búsqueda numérica y no una fórmula cerrada porque el saldo "a pagar" no se
 // arrastra al mes siguiente. El Neto baja siempre que sube la diferencia (cada saldo mensual baja o se
 // queda igual, y el del propio mes baja seguro), así que hay una única solución.
-export function resolverDiferenciaUniforme(filas, saldoInicial, objetivo, palanca = 'debito', extraPorMes = 0) {
+export function resolverDiferenciaUniforme(filas, saldoInicial, objetivo, palanca = 'debito', creditoPorMes = 0) {
   if (!filas.some((f) => f.libre)) return null;
   if (filas.at(-1).tipo === 'real') return null;
   let bajo = -1e13;
   let alto = 1e13;
   for (let i = 0; i < 200; i++) {
     const medio = (bajo + alto) / 2;
-    if (netoConDiferencia(filas, saldoInicial, medio, palanca, extraPorMes) > objetivo) bajo = medio;
+    if (netoConDiferencia(filas, saldoInicial, medio, palanca, creditoPorMes) > objetivo) bajo = medio;
     else alto = medio;
   }
   const d = (bajo + alto) / 2;
-  const obtenido = netoConDiferencia(filas, saldoInicial, d, palanca, extraPorMes);
+  const obtenido = netoConDiferencia(filas, saldoInicial, d, palanca, creditoPorMes);
   return { d, alcanzable: Math.abs(obtenido - objetivo) < 1 };
 }
 
 // `objetivo`: Neto del año que se quiere (a favor positivo, a pagar negativo).
 // `editados`: { 'YYYY-MM': { debito, credito } } — meses que el usuario tocó a mano; quedan fijos.
 // `ajustar`: si es true y hay objetivo, los meses sin tocar se calculan para llegar al objetivo; si
-// no, siguen la tendencia (Débito y Crédito de la base elegida).
+// no, siguen la tendencia (el Débito promedio de la base elegida y el Crédito cargado).
 // `palanca`: qué se mueve para llegar al objetivo ('debito' = cuánto facturar, 'credito' = compras).
-// `ivaPendiente`: IVA de compras que los proveedores todavía no facturaron.
-// `compraAdicional`: IVA de compras que se piensa hacer más adelante.
-// Los dos se suman al Crédito de los meses sin tocar, repartidos parejo.
+//
+// El Crédito de cada mes sin tocar se arma SOLO con lo que se carga (no con el promedio de meses anteriores):
+//  - `ivaPendiente`: IVA de compras que los proveedores todavía no facturaron (total, repartido parejo).
+//  - `compraAdicional`: IVA de compras que se piensa hacer más adelante (total, repartido parejo).
+//  - `creditoFijo`: IVA fijo que se suma igual en CADA mes sin tocar.
 export function calcularProyeccion({
-  evolucion, anio, baseModo, objetivo, ajustar, editados, palanca = 'debito', ivaPendiente = 0, compraAdicional = 0,
+  evolucion, anio, baseModo, objetivo, ajustar, editados, palanca = 'debito',
+  ivaPendiente = 0, compraAdicional = 0, creditoFijo = 0,
 }) {
   const base = armarFilasBase(evolucion, anio);
   const saldoInicial = saldoInicialDelAnio(evolucion, anio);
   const filas = base.map((f) => {
     if (f.tipo === 'real') return f;
     const est = estimarBase(evolucion, f.periodo, baseModo);
-    const comun = { ...f, debitoBase: est.debito, creditoBase: est.credito };
+    const comun = { ...f, debitoBase: est.debito };
     const ed = editados[f.periodo];
     if (ed) return { ...comun, editado: true, libre: false, debito: ed.debito, credito: ed.credito };
-    return { ...comun, editado: false, libre: true, debito: est.debito, credito: est.credito };
+    return { ...comun, editado: false, libre: true, debito: est.debito, credito: 0 };
   });
 
   const cantidadLibres = filas.filter((f) => f.libre).length;
   const positivo = (n) => (Number.isFinite(n) && n > 0 ? n : 0);
   const pendienteTotal = positivo(ivaPendiente);
   const compraAdicionalTotal = positivo(compraAdicional);
-  const extraPorMes = cantidadLibres > 0 ? (pendienteTotal + compraAdicionalTotal) / cantidadLibres : 0;
+  const fijoPorMes = positivo(creditoFijo);
+  const pendientePorMes = cantidadLibres > 0 ? pendienteTotal / cantidadLibres : 0;
+  const compraAdicionalPorMes = cantidadLibres > 0 ? compraAdicionalTotal / cantidadLibres : 0;
+  const creditoPorMes = cantidadLibres > 0 ? pendientePorMes + compraAdicionalPorMes + fijoPorMes : 0;
 
   const hayObjetivo = objetivo != null && Number.isFinite(objetivo);
   const resolucion = ajustar && hayObjetivo
-    ? resolverDiferenciaUniforme(filas, saldoInicial, objetivo, palanca, extraPorMes)
+    ? resolverDiferenciaUniforme(filas, saldoInicial, objetivo, palanca, creditoPorMes)
     : null;
 
-  // Sin objetivo (o sin meses para ajustar), los libres siguen la tendencia con el Crédito extra
-  // (pendiente y compra adicional) sumado. Con objetivo, se calculan para que el Neto dé justo el objetivo.
+  // Sin objetivo (o sin meses para ajustar), los libres siguen la tendencia: Débito promedio y el Crédito
+  // cargado. Con objetivo, se calculan para que el Neto dé justo el objetivo.
   const aplicadas = resolucion
-    ? aplicarLibres(filas, resolucion.d, palanca, extraPorMes)
-    : filas.map((f) => (f.libre ? { ...f, credito: f.creditoBase + extraPorMes } : f));
+    ? aplicarLibres(filas, resolucion.d, palanca, creditoPorMes)
+    : filas.map((f) => (f.libre ? { ...f, credito: creditoPorMes } : f));
   const finales = aplicadas.map((f) => (f.libre ? { ...f, debito: redondear(f.debito), credito: redondear(f.credito) } : f));
   const simuladas = simular(finales, saldoInicial);
 
@@ -179,7 +186,6 @@ export function calcularProyeccion({
   const debitoNecesario = promedio(libres.map((f) => f.debito));
   const creditoNecesario = promedio(libres.map((f) => f.credito));
   const debitoReferencia = promedio(libres.map((f) => f.debitoBase));
-  const creditoReferencia = promedio(libres.map((f) => f.creditoBase)) + extraPorMes;
   const neto = netoDelAnio(simuladas);
 
   return {
@@ -192,17 +198,19 @@ export function calcularProyeccion({
     cantidadLibres,
     pendienteTotal,
     compraAdicionalTotal,
-    pendientePorMes: cantidadLibres > 0 ? pendienteTotal / cantidadLibres : 0,
-    compraAdicionalPorMes: cantidadLibres > 0 ? compraAdicionalTotal / cantidadLibres : 0,
-    extraPorMes,
-    extraSinUsar: pendienteTotal + compraAdicionalTotal > 0 && cantidadLibres === 0,
+    pendientePorMes,
+    compraAdicionalPorMes,
+    fijoPorMes,
+    creditoPorMes,
+    extraSinUsar: pendienteTotal + compraAdicionalTotal + fijoPorMes > 0 && cantidadLibres === 0,
     debitoNecesario,
     debitoReferencia,
     facturarDeMas: debitoNecesario - debitoReferencia,
     variacionDebito: debitoReferencia > 0 ? debitoNecesario / debitoReferencia - 1 : null,
     creditoNecesario,
-    creditoReferencia,
-    variacionCredito: creditoReferencia > 0 ? creditoNecesario / creditoReferencia - 1 : null,
+    // Cuánto Crédito ya está armado por mes con lo cargado; con la palanca Crédito, la diferencia contra
+    // el Crédito necesario es lo que falta conseguir.
+    creditoReferencia: creditoPorMes,
     brecha: hayObjetivo ? neto - objetivo : null,
     mesesAPagar: simuladas.filter((f) => f.tipo === 'proyectado' && f.saldo < 0).map((f) => f.periodo),
     mesesCreditoNegativo: simuladas.filter((f) => f.libre && f.credito < 0).map((f) => f.periodo),
