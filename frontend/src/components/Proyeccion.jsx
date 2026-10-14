@@ -4,6 +4,7 @@ import { api } from '../api';
 import { money, periodoLabel, periodoLabelCompleto, fechaLabel, fechaHoraLabel } from '../format';
 import { BASES, calcularProyeccion } from '../proyeccion';
 import InfoTooltip from './InfoTooltip';
+import CampoMoneda from './CampoMoneda';
 import Spinner from './Spinner';
 
 const RAZONES = ['Target', 'NT'];
@@ -165,6 +166,7 @@ function EscenariosGuardados({ razonSocial, escenarios, cargando, onEliminar }) 
                       ? `Los meses sin editar se ajustaron para llegar al objetivo${e.palanca ? ` moviendo ${e.palanca === 'debito' ? 'la facturación (Débito)' : 'las compras (Crédito)'}` : ''}.`
                       : 'Los meses sin editar siguieron la tendencia.'}
                     {e.iva_pendiente > 0 && ` IVA de compras pendientes de facturar: ${money(e.iva_pendiente)}.`}
+                    {e.compra_adicional > 0 && ` Compra adicional (IVA a futuro): ${money(e.compra_adicional)}.`}
                   </p>
                   <TablaMeses meses={e.meses} neto={e.objetivo_tipo === 'neto' ? e.neto : null} />
                   <button
@@ -198,6 +200,7 @@ export default function Proyeccion({ evoluciones }) {
   const [baseModo, setBaseModo] = useState('prom3');
   const [palanca, setPalanca] = useState('debito');
   const [pendienteTexto, setPendienteTexto] = useState('');
+  const [compraAdicionalTexto, setCompraAdicionalTexto] = useState('');
   const [ajustar, setAjustar] = useState(true);
   // { 'YYYY-MM': { debito: '123', credito: '45' } } — texto tal cual se tipea, para poder borrar y
   // escribir sin que el campo salte; se convierte a número recién al calcular.
@@ -237,14 +240,17 @@ export default function Proyeccion({ evoluciones }) {
   }, [objetivoTexto, objetivoSigno]);
 
   const ivaPendiente = Math.max(0, numero(pendienteTexto));
+  const compraAdicional = Math.max(0, numero(compraAdicionalTexto));
 
   const resultado = useMemo(() => {
     if (!evolucion) return null;
     const editadosNumericos = Object.fromEntries(
       Object.entries(editados).map(([p, v]) => [p, { debito: numero(v.debito), credito: numero(v.credito) }])
     );
-    return calcularProyeccion({ evolucion, anio, baseModo, objetivo, ajustar, editados: editadosNumericos, palanca, ivaPendiente });
-  }, [evolucion, anio, baseModo, objetivo, ajustar, editados, palanca, ivaPendiente]);
+    return calcularProyeccion({
+      evolucion, anio, baseModo, objetivo, ajustar, editados: editadosNumericos, palanca, ivaPendiente, compraAdicional,
+    });
+  }, [evolucion, anio, baseModo, objetivo, ajustar, editados, palanca, ivaPendiente, compraAdicional]);
 
   function cambiarRazonSocial(r) {
     setRazonSocial(r);
@@ -262,8 +268,8 @@ export default function Proyeccion({ evoluciones }) {
   function editarCampo(fila, campo, valor) {
     setEditados((prev) => {
       const actual = prev[fila.periodo] ?? {
-        debito: String(redondear(fila.debito)),
-        credito: String(redondear(fila.credito)),
+        debito: redondear(fila.debito).toFixed(2),
+        credito: redondear(fila.credito).toFixed(2),
       };
       return { ...prev, [fila.periodo]: { ...actual, [campo]: valor } };
     });
@@ -289,6 +295,7 @@ export default function Proyeccion({ evoluciones }) {
         neto: resultado.neto,
         palanca,
         iva_pendiente: ivaPendiente,
+        compra_adicional: compraAdicional,
         base_modo: baseModo,
         ajustar_al_objetivo: ajustar && objetivo != null,
         meses: resultado.filas.map((f) => ({
@@ -351,7 +358,7 @@ export default function Proyeccion({ evoluciones }) {
         Resultante de los 12 meses (los meses a favor suman, los a pagar restan). Los meses cerrados salen de los
         datos reales y no se tocan. Poné el Neto con el que querés terminar y la app calcula cuánto habría que
         facturar (o cuánto Crédito juntar) por mes en los meses que faltan, teniendo en cuenta las compras que
-        todavía no te facturaron. Si cambiás un mes a mano queda fijo y el resto se reajusta.
+        todavía no te facturaron y las compras adicionales que pienses hacer. Si cambiás un mes a mano queda fijo y el resto se reajusta.
       </p>
 
       <div className="fuente-card">
@@ -388,6 +395,20 @@ export default function Proyeccion({ evoluciones }) {
               placeholder="0"
               value={pendienteTexto}
               onChange={(e) => setPendienteTexto(e.target.value)}
+            />
+          </label>
+          <label className="campo-manual">
+            <span>
+              Compra adicional (IVA a futuro)
+              <InfoTooltip texto="Compras que querés hacer más adelante. Cargá el IVA (Crédito Fiscal) que van a generar: se suma al Crédito de los meses que faltan, igual que lo pendiente de facturar, repartido parejo entre los meses sin modificar." />
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0"
+              value={compraAdicionalTexto}
+              onChange={(e) => setCompraAdicionalTexto(e.target.value)}
             />
           </label>
           <label className="campo-manual">
@@ -467,7 +488,7 @@ export default function Proyeccion({ evoluciones }) {
               <div className="card">
                 <div className="card-label">
                   {facturarDeMas >= 0 ? 'Facturar de más por mes' : 'Facturar de menos por mes'}
-                  <InfoTooltip texto="Cuánto Débito Fiscal (IVA de ventas) hay que facturar por mes contra el promedio de la base elegida, para llegar al objetivo con las compras pendientes de facturar ya sumadas al Crédito." />
+                  <InfoTooltip texto="Cuánto Débito Fiscal (IVA de ventas) hay que facturar por mes contra el promedio de la base elegida, para llegar al objetivo con las compras pendientes de facturar y la compra adicional ya sumadas al Crédito." />
                 </div>
                 <div className={`card-value ${facturarDeMas > 0 ? 'neg' : 'pos'}`}>{money(Math.abs(facturarDeMas))}</div>
                 <div className="card-hint">
@@ -483,13 +504,13 @@ export default function Proyeccion({ evoluciones }) {
               <div className="card">
                 <div className="card-label">
                   Crédito Fiscal necesario por mes
-                  <InfoTooltip texto="Crédito promedio que necesitás en los meses sin modificar, dado el Débito de la tendencia. Se compara contra tu promedio más el IVA de compras pendientes de facturar." />
+                  <InfoTooltip texto="Crédito promedio que necesitás en los meses sin modificar, dado el Débito de la tendencia. Se compara contra tu promedio más el IVA de compras pendientes de facturar y la compra adicional." />
                 </div>
                 <div className="card-value">{money(resultado.creditoNecesario)}</div>
                 {resultado.variacionCredito != null && (
                   <div className={`card-hint ${resultado.variacionCredito > 0.5 ? 'card-hint-pagar' : ''}`}>
                     {porcentaje(resultado.variacionCredito)} sobre tu referencia ({money(resultado.creditoReferencia)}
-                    {resultado.pendientePorMes > 0 ? ', ya con el IVA pendiente' : ''})
+                    {resultado.extraPorMes > 0 ? ', ya con lo pendiente y la compra adicional' : ''})
                   </div>
                 )}
                 <div className="card-hint">
@@ -504,9 +525,20 @@ export default function Proyeccion({ evoluciones }) {
                 <div className="card-label">IVA de compras pendientes</div>
                 <div className="card-value">{money(resultado.pendienteTotal)}</div>
                 <div className="card-hint">
-                  {resultado.pendienteSinUsar
+                  {resultado.extraSinUsar
                     ? 'No se está usando: todos los meses están modificados a mano'
                     : `${money(resultado.pendientePorMes)} por mes de Crédito extra en ${resultado.cantidadLibres} ${resultado.cantidadLibres === 1 ? 'mes' : 'meses'}`}
+                </div>
+              </div>
+            )}
+            {resultado.compraAdicionalTotal > 0 && (
+              <div className="card">
+                <div className="card-label">Compra adicional (IVA a futuro)</div>
+                <div className="card-value">{money(resultado.compraAdicionalTotal)}</div>
+                <div className="card-hint">
+                  {resultado.extraSinUsar
+                    ? 'No se está usando: todos los meses están modificados a mano'
+                    : `${money(resultado.compraAdicionalPorMes)} por mes de Crédito extra en ${resultado.cantidadLibres} ${resultado.cantidadLibres === 1 ? 'mes' : 'meses'}`}
                 </div>
               </div>
             )}
@@ -579,12 +611,10 @@ export default function Proyeccion({ evoluciones }) {
                     {['debito', 'credito'].map((campo) => (
                       <td key={campo}>
                         {proyectado ? (
-                          <input
+                          <CampoMoneda
                             className="proy-input"
-                            type="number"
-                            step="0.01"
-                            value={edicion ? edicion[campo] : redondear(f[campo])}
-                            onChange={(e) => editarCampo(f, campo, e.target.value)}
+                            valor={edicion ? edicion[campo] : redondear(f[campo]).toFixed(2)}
+                            onChange={(raw) => editarCampo(f, campo, raw)}
                             aria-label={`${campo === 'debito' ? 'Débito' : 'Crédito'} ${periodoLabel(f.periodo)}`}
                           />
                         ) : money(f[campo])}

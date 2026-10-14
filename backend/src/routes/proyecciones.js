@@ -14,10 +14,10 @@ router.get('/', soloAdminODev, async (req, res) => {
 });
 
 router.post('/', soloAdminODev, async (req, res) => {
-  const { razon_social: razonSocial, anio, nombre, objetivo, saldo_final: saldoFinal, neto, palanca, iva_pendiente: ivaPendiente, base_modo: baseModo, ajustar_al_objetivo: ajustarAlObjetivo, meses } = req.body;
+  const { razon_social: razonSocial, anio, nombre, objetivo, saldo_final: saldoFinal, neto, palanca, iva_pendiente: ivaPendiente, compra_adicional: compraAdicional, base_modo: baseModo, ajustar_al_objetivo: ajustarAlObjetivo, meses } = req.body;
   try {
     res.json(await guardarEscenario(
-      { razonSocial, anio, nombre, objetivo, saldoFinal, neto, palanca, ivaPendiente, baseModo, ajustarAlObjetivo, meses },
+      { razonSocial, anio, nombre, objetivo, saldoFinal, neto, palanca, ivaPendiente, compraAdicional, baseModo, ajustarAlObjetivo, meses },
       req.usuario?.username
     ));
   } catch (err) {
