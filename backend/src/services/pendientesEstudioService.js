@@ -6,6 +6,7 @@
 // que había antes (el estudio ya viene sacando de esa lista lo que le vamos mandando).
 import * as XLSX from 'xlsx';
 import { db, all, run, get } from '../db.js';
+import { buscadorDeEnviosControlMensual } from './controlEnvioMensualService.js';
 
 // El estudio manda a veces .xlsx y a veces el formato binario viejo .xls — ExcelJS (usado en el
 // resto de la app) solo entiende .xlsx y ante un .xls no tira error, devuelve un workbook con 0
@@ -195,9 +196,9 @@ export async function previsualizarHojas(buffer) {
 
 const INSERT_SQL = `
   INSERT INTO pendientes_estudio
-    (razon_social, fecha, tipo_comprobante, pdv, numero, cuit_contraparte, denominacion_contraparte, neto_gravado, iva, total, archivo_origen, listo, ya_enviado_antes, enviado_antes_en)
+    (razon_social, fecha, tipo_comprobante, pdv, numero, cuit_contraparte, denominacion_contraparte, neto_gravado, iva, total, archivo_origen, listo, ya_enviado_antes, enviado_antes_en, auto_listo_aplicado)
   VALUES
-    (@razon_social, @fecha, @tipo_comprobante, @pdv, @numero, @cuit_contraparte, @denominacion_contraparte, @neto_gravado, @iva, @total, @archivo_origen, @listo, @ya_enviado_antes, @enviado_antes_en)
+    (@razon_social, @fecha, @tipo_comprobante, @pdv, @numero, @cuit_contraparte, @denominacion_contraparte, @neto_gravado, @iva, @total, @archivo_origen, @listo, @ya_enviado_antes, @enviado_antes_en, @auto_listo_aplicado)
 `;
 
 function parsearHoja(filas, razonSocial, archivoOrigen, nombreHoja) {
@@ -268,6 +269,13 @@ export async function importarHojas(buffer, nombresHojas, razonSocial, archivoOr
     [razonSocial]
   );
   const clavesListas = new Set(listosAntes.map((r) => `${r.cuit_contraparte}|${r.pdv}|${r.numero}`));
+  // Idem para el aviso de "ya se tildó solo una vez": si lo destildaron a mano después, el Excel nuevo
+  // no tiene que volver a tildarlo.
+  const autoAplicadosAntes = await all(
+    'SELECT cuit_contraparte, pdv, numero FROM pendientes_estudio WHERE razon_social = ? AND auto_listo_aplicado = 1',
+    [razonSocial]
+  );
+  const clavesAutoAplicadas = new Set(autoAplicadosAntes.map((r) => `${r.cuit_contraparte}|${r.pdv}|${r.numero}`));
 
   // El estudio a veces vuelve a pedir en un Excel nuevo un comprobante que ya le mandamos en un PDF
   // anterior (no lo sacó de su lista todavía). Se cruza cada fila nueva contra el historial de envíos
@@ -293,6 +301,7 @@ export async function importarHojas(buffer, nombresHojas, razonSocial, archivoOr
       listo: clavesListas.has(clave) ? 1 : 0,
       ya_enviado_antes: enviadoAntesEn ? 1 : 0,
       enviado_antes_en: enviadoAntesEn,
+      auto_listo_aplicado: clavesAutoAplicadas.has(clave) ? 1 : 0,
     };
   });
 
@@ -315,8 +324,32 @@ export async function importarHojas(buffer, nombresHojas, razonSocial, archivoOr
   return { cantidad: filas.length, alertas };
 }
 
+// Lo que el estudio pide y ya le mandamos por Control mensual (en cualquier mes) se tilda solo como
+// "listo": ya está encontrado y enviado, no hay que volver a buscarlo. Pasa una sola vez por
+// comprobante (auto_listo_aplicado) — si después se destilda a mano, se respeta. Además deja en cada
+// fila enviado_control_mensual_en (fecha del PDF) para mostrar de dónde viene el tilde.
+async function sincronizarListosDesdeControlMensual(razonSocial, filas) {
+  const enviadoEn = await buscadorDeEnviosControlMensual(razonSocial);
+  const idsATildar = [];
+  for (const f of filas) {
+    f.enviado_control_mensual_en = enviadoEn(f);
+    if (f.enviado_control_mensual_en && !f.auto_listo_aplicado) {
+      idsATildar.push(f.id);
+      f.listo = 1;
+      f.auto_listo_aplicado = 1;
+    }
+  }
+  if (idsATildar.length > 0) {
+    await db.batch(
+      idsATildar.map((id) => ({ sql: 'UPDATE pendientes_estudio SET listo = 1, auto_listo_aplicado = 1 WHERE id = ?', args: [id] })),
+      'write'
+    );
+  }
+}
+
 export async function obtenerPendientes(razonSocial) {
   const filas = await all('SELECT * FROM pendientes_estudio WHERE razon_social = ? ORDER BY fecha, numero', [razonSocial]);
+  await sincronizarListosDesdeControlMensual(razonSocial, filas);
 
   // En valor absoluto, no neto: un proveedor con una Factura y su Nota de Crédito exacta (mismo
   // importe, signo contrario, las dos igual "pendientes" según el estudio) sumaba $0 neto y

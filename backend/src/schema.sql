@@ -170,6 +170,10 @@ CREATE TABLE IF NOT EXISTS pendientes_estudio (
   -- lo mandamos — señal para avisarle en vez de mandarlo (o no) sin darse cuenta.
   ya_enviado_antes          INTEGER NOT NULL DEFAULT 0,
   enviado_antes_en          TEXT,
+  -- Se pone en 1 la primera vez que este comprobante se tildó solo porque ya había salido en un PDF de
+  -- Control mensual (ver sincronizarListosDesdeControlMensual). Así, si después se destilda a mano, no
+  -- se vuelve a tildar solo en la próxima visita.
+  auto_listo_aplicado       INTEGER NOT NULL DEFAULT 0,
   creado_en                 TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

@@ -49,6 +49,32 @@ async function clavesYaEnviadas(razonSocial, periodo) {
   return new Set(items.map((i) => clave(i.cuit_contraparte, i.pdv, i.numero)));
 }
 
+// Todos los comprobantes que alguna vez integraron un PDF de Control mensual (de cualquier período),
+// para que "Lo que pide el estudio" los tilde solo en vez de tener que buscarlos de nuevo uno por uno.
+// Devuelve una función que, dada una fila de pendientes_estudio, responde cuándo se mandó (o null).
+// Los cargados a mano no tienen PDV, y el Excel del estudio puede traerlo igual: para esos se acepta
+// también el cruce solo por CUIT + número.
+export async function buscadorDeEnviosControlMensual(razonSocial) {
+  const items = await all(
+    `SELECT i.origen, i.cuit_contraparte, i.pdv, i.numero, e.fecha_hora
+     FROM envio_control_mensual_item i
+     JOIN envio_control_mensual e ON e.id = i.envio_id
+     WHERE e.razon_social = ?
+     ORDER BY e.fecha_hora ASC`,
+    [razonSocial]
+  );
+  const exactas = new Map();
+  const sinPdv = new Map();
+  for (const i of items) { // ASC: la última escritura es el envío más reciente
+    exactas.set(clave(i.cuit_contraparte, i.pdv, i.numero), i.fecha_hora);
+    if (i.origen === 'manual') sinPdv.set(clave(i.cuit_contraparte, null, i.numero), i.fecha_hora);
+  }
+  return (fila) =>
+    exactas.get(clave(fila.cuit_contraparte, fila.pdv, fila.numero))
+    ?? sinPdv.get(clave(fila.cuit_contraparte, null, fila.numero))
+    ?? null;
+}
+
 // Todo lo que debería mandarse ese mes: comprobantes de compra ya cargados (Mis Comprobantes) más
 // los cargados a mano (peajes, combustible), unificados en una sola lista con la misma forma.
 export async function obtenerControlMensual(razonSocial, periodo) {
@@ -169,13 +195,14 @@ export async function registrarEnvioControlMensual(razonSocial, periodo, usuario
   return { envio_id: envioId, cantidad: marcados.length };
 }
 
+// Sin período devuelve el historial completo de la razón social (todos los meses); con período, solo ese.
 export async function obtenerHistorialControlMensual(razonSocial, periodo) {
   if (!['NT', 'Target'].includes(razonSocial)) throw new Error('Falta razón social (NT o Target).');
-  if (!/^\d{4}-\d{2}$/.test(periodo || '')) throw new Error('Falta período (formato YYYY-MM).');
+  if (periodo && !/^\d{4}-\d{2}$/.test(periodo)) throw new Error('Período inválido (formato YYYY-MM).');
 
   const envios = await all(
-    'SELECT * FROM envio_control_mensual WHERE razon_social = ? AND periodo = ? ORDER BY fecha_hora DESC',
-    [razonSocial, periodo]
+    `SELECT * FROM envio_control_mensual WHERE razon_social = ?${periodo ? ' AND periodo = ?' : ''} ORDER BY fecha_hora DESC, id DESC`,
+    periodo ? [razonSocial, periodo] : [razonSocial]
   );
   if (envios.length === 0) return [];
   const ids = envios.map((e) => e.id);

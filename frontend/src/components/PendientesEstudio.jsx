@@ -220,7 +220,9 @@ export default function PendientesEstudio({ razonSocial }) {
         siguiente el estudio manda un Excel nuevo sin lo que ya le mandaste; se sube igual y
         reemplaza esta lista (lo que ya tenías tildado sigue tildado si sigue apareciendo). Si el
         Excel nuevo vuelve a pedir algo que ya le mandamos en un PDF anterior, queda marcado con ⚠
-        para avisarle al estudio en vez de mandarlo de nuevo sin darse cuenta.
+        para avisarle al estudio en vez de mandarlo de nuevo sin darse cuenta. Lo que ya mandaste
+        desde Control mensual (de cualquier mes) se tilda solo y lleva un ✓ — si lo destildás a mano,
+        no se vuelve a tildar solo.
       </p>
 
       <div className="fuente-card">
@@ -434,6 +436,9 @@ export default function PendientesEstudio({ razonSocial }) {
                       <td className="col-concepto" title={f.denominacion_contraparte || ''}>
                         {!!f.ya_enviado_antes && (
                           <span className="alerta-badge" title={`Ya se lo mandamos al estudio el ${fechaHoraLabel(f.enviado_antes_en)} — lo está pidiendo de nuevo`}>⚠</span>
+                        )}
+                        {!!f.enviado_control_mensual_en && (
+                          <span className="enviado-badge" title={`Ya se mandó desde Control mensual el ${fechaHoraLabel(f.enviado_control_mensual_en)} — por eso quedó tildado solo`}>✓</span>
                         )}
                         {f.denominacion_contraparte || '—'}
                       </td>

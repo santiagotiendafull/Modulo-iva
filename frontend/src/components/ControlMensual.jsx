@@ -44,12 +44,7 @@ export default function ControlMensual({ razonSocial }) {
     setCargando(true);
     setError(null);
     try {
-      const [d, h] = await Promise.all([
-        api.controlMensual(razonSocial, periodo),
-        api.historialControlMensual(razonSocial, periodo),
-      ]);
-      setDatos(d);
-      setHistorial(h);
+      setDatos(await api.controlMensual(razonSocial, periodo));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -57,7 +52,18 @@ export default function ControlMensual({ razonSocial }) {
     }
   }, [razonSocial, periodo]);
 
+  // "Ya enviados" es el historial de siempre de la razón social, no del mes elegido: se carga aparte
+  // y no depende del período (ni se oculta mientras se recarga la tabla de arriba).
+  const cargarHistorial = useCallback(async () => {
+    try {
+      setHistorial(await api.historialControlMensual(razonSocial));
+    } catch (err) {
+      setError(err.message);
+    }
+  }, [razonSocial]);
+
   useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => { cargarHistorial(); }, [cargarHistorial]);
   // Al cambiar de período o de razón social vuelve a quedar bloqueado — evita quedarse
   // desbloqueado sin darse cuenta y tildar algo de otro mes por error.
   useEffect(() => { setBloqueado(true); }, [razonSocial, periodo]);
@@ -89,7 +95,7 @@ export default function ControlMensual({ razonSocial }) {
     setGenerandoPdf(true);
     try {
       await api.pdfControlMensual(razonSocial, periodo);
-      setHistorial(await api.historialControlMensual(razonSocial, periodo));
+      await Promise.all([cargarHistorial(), cargar()]);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -251,59 +257,62 @@ export default function ControlMensual({ razonSocial }) {
               </tbody>
             </table>
           </div>
-
-          <div className="tabla-comparativa">
-            <div className="tabla-comparativa-header">
-              <h3>Ya enviados</h3>
-            </div>
-            {(!historial || historial.length === 0) && <p className="bloque-nota">Todavía no se generó ningún envío.</p>}
-            {historial && historial.length > 0 && (
-              <div className="envios-lista">
-                {historial.map((envio) => (
-                  <div key={envio.id} className="envio-item">
-                    <button type="button" className="envio-item-header" onClick={() => setEnvioIdAbierto((v) => (v === envio.id ? null : envio.id))}>
-                      <span>{fechaHoraLabel(envio.fecha_hora)} — {envio.cantidad} comprobantes{envio.usuario ? ` — ${envio.usuario}` : ''}</span>
-                      <span>{envioIdAbierto === envio.id ? '▲' : '▼'}</span>
-                    </button>
-                    {envioIdAbierto === envio.id && (
-                      <div className="tabla-scroll">
-                        <table className="tabla-conciliacion-comprobantes">
-                          <thead>
-                            <tr>
-                              <th>Fecha</th>
-                              <th className="col-concepto">Comprobante</th>
-                              <th>Origen</th>
-                              <th>PDV</th>
-                              <th>Número</th>
-                              <th className="col-concepto">Proveedor</th>
-                              <th>IVA</th>
-                              <th>Total</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {envio.items.map((it) => (
-                              <tr key={it.id}>
-                                <td>{fechaLabel(it.fecha)}</td>
-                                <td className="col-concepto" title={it.tipo_comprobante}>{tipoComprobanteLabel(it.tipo_comprobante)}</td>
-                                <td>{it.origen === 'manual' ? <span className="origen-pill origen-manual">Manual</span> : 'ARCA'}</td>
-                                <td>{it.pdv || '—'}</td>
-                                <td>{it.numero || '—'}</td>
-                                <td className="col-concepto">{it.denominacion_contraparte || '—'}</td>
-                                <td>{money(it.iva)}</td>
-                                <td>{money(it.total)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </>
       )}
+
+      <div className="tabla-comparativa">
+        <div className="tabla-comparativa-header">
+          <h3>
+            Ya enviados
+            <InfoTooltip texto="Historial completo de todos los PDF que se generaron desde Control mensual, de cualquier mes — no cambia al elegir otro período." />
+          </h3>
+        </div>
+        {(!historial || historial.length === 0) && <p className="bloque-nota">Todavía no se generó ningún envío.</p>}
+        {historial && historial.length > 0 && (
+          <div className="envios-lista">
+            {historial.map((envio) => (
+              <div key={envio.id} className="envio-item">
+                <button type="button" className="envio-item-header" onClick={() => setEnvioIdAbierto((v) => (v === envio.id ? null : envio.id))}>
+                  <span>{fechaHoraLabel(envio.fecha_hora)} — período {envio.periodo} — {envio.cantidad} comprobantes{envio.usuario ? ` — ${envio.usuario}` : ''}</span>
+                  <span>{envioIdAbierto === envio.id ? '▲' : '▼'}</span>
+                </button>
+                {envioIdAbierto === envio.id && (
+                  <div className="tabla-scroll">
+                    <table className="tabla-conciliacion-comprobantes">
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th className="col-concepto">Comprobante</th>
+                          <th>Origen</th>
+                          <th>PDV</th>
+                          <th>Número</th>
+                          <th className="col-concepto">Proveedor</th>
+                          <th>IVA</th>
+                          <th>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {envio.items.map((it) => (
+                          <tr key={it.id}>
+                            <td>{fechaLabel(it.fecha)}</td>
+                            <td className="col-concepto" title={it.tipo_comprobante}>{tipoComprobanteLabel(it.tipo_comprobante)}</td>
+                            <td>{it.origen === 'manual' ? <span className="origen-pill origen-manual">Manual</span> : 'ARCA'}</td>
+                            <td>{it.pdv || '—'}</td>
+                            <td>{it.numero || '—'}</td>
+                            <td className="col-concepto">{it.denominacion_contraparte || '—'}</td>
+                            <td>{money(it.iva)}</td>
+                            <td>{money(it.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {modalManualAbierto && (
         <div className="modal-overlay" onClick={cerrarModalManual}>

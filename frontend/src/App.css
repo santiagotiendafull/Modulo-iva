@@ -945,6 +945,7 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
 .tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-alerta { background: rgba(208, 59, 59, 0.08); }
 .tabla-conciliacion-comprobantes tbody tr.fila-clickeable.fila-alerta.fila-seleccionada { background: rgba(208, 59, 59, 0.16); }
 .alerta-badge { color: var(--bad); margin-right: 6px; cursor: help; }
+.enviado-badge { color: var(--good, #3a8a5c); margin-right: 6px; cursor: help; }
 
 .alerta-reenvio {
   margin-top: 12px;
