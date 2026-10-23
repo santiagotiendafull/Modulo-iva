@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 
-export default function Dropzone({ accept, label, hint, disabled, multiple, onFile, onFiles }) {
+export default function Dropzone({ accept, label, hint, disabled, multiple, compact, onFile, onFiles }) {
   const inputRef = useRef(null);
   const [arrastrando, setArrastrando] = useState(false);
 
@@ -12,7 +12,7 @@ export default function Dropzone({ accept, label, hint, disabled, multiple, onFi
 
   return (
     <div
-      className={`dropzone ${arrastrando ? 'arrastrando' : ''} ${disabled ? 'disabled' : ''}`}
+      className={`dropzone ${compact ? 'compacta' : ''} ${arrastrando ? 'arrastrando' : ''} ${disabled ? 'disabled' : ''}`}
       onDragOver={(e) => { e.preventDefault(); if (!disabled) setArrastrando(true); }}
       onDragLeave={() => setArrastrando(false)}
       onDrop={(e) => {
@@ -28,8 +28,10 @@ export default function Dropzone({ accept, label, hint, disabled, multiple, onFi
         <path d="M12 3v12m0-12 4 4m-4-4-4 4" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      <div className="dropzone-label">{label}</div>
-      {hint && <div className="dropzone-hint">{hint}</div>}
+      <div className="dropzone-texto">
+        <div className="dropzone-label">{label}</div>
+        {hint && <div className="dropzone-hint">{hint}</div>}
+      </div>
       <input
         ref={inputRef}
         type="file"

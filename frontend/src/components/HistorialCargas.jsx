@@ -13,6 +13,8 @@ function ultimoPeriodoConDatos(filas, razonSocial, campo) {
     .at(-1) ?? null;
 }
 
+const ANIO_PREDETERMINADO = '2026';
+
 function CeldaComprobantes({ dato, esUltimoPeriodo }) {
   if (!dato.cargado) return <span className="historial-celda historial-celda-vacio">Sin cargar</span>;
   if (dato.completo) {
@@ -29,7 +31,8 @@ export default function HistorialCargas({ refreshKey }) {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [filtroRazonSocial, setFiltroRazonSocial] = useState('todas');
-  const [filtroAnio, setFiltroAnio] = useState('todos');
+  // Arranca en el ejercicio en curso; si todavía no hay nada cargado de ese año se muestra todo.
+  const [filtroAnioElegido, setFiltroAnio] = useState(ANIO_PREDETERMINADO);
   const [filtroPeriodo, setFiltroPeriodo] = useState('todos');
 
   useEffect(() => {
@@ -52,6 +55,7 @@ export default function HistorialCargas({ refreshKey }) {
   const ultimoEmitidos = { NT: ultimoPeriodoConDatos(filas, 'NT', 'emitidos'), Target: ultimoPeriodoConDatos(filas, 'Target', 'emitidos') };
 
   const aniosDisponibles = [...new Set(filas.map((f) => f.periodo.slice(0, 4)))].sort().reverse();
+  const filtroAnio = filtroAnioElegido === 'todos' || aniosDisponibles.includes(filtroAnioElegido) ? filtroAnioElegido : 'todos';
   // El desplegable de meses solo ofrece los del año elegido: con varios ejercicios cargados, la
   // lista completa se vuelve inmanejable.
   const periodosDisponibles = [...new Set(

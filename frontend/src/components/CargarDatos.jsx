@@ -1,36 +1,75 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import { periodoLabel, money } from '../format';
+import { periodoLabel, periodoLabelCompleto } from '../format';
 import Dropzone from './Dropzone';
 import HistorialCargas from './HistorialCargas';
 
 const RAZON_SOCIAL_DESCONOCIDA = 'no se pudo determinar la razón social (CUIT) del archivo';
-const RAZONES = ['Target', 'NT'];
 const RAZONES_ARCA = ['NT', 'Target'];
+const MODOS_PERIODO = [['actual', 'Este mes'], ['anterior', 'Mes pasado'], ['otro', 'Otro mes']];
 
 function mesAnterior(periodo) {
   const [y, m] = periodo.split('-').map(Number);
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
 }
 
-function EstadoStaged({ archivo, onElegirRazonSocial }) {
-  if (archivo.cargando) return <span className="staged-estado staged-cargando">Analizando…</span>;
+// "NT", "NT y Target"
+function listaDeRazones(razones) {
+  return razones.join(' y ');
+}
+
+function Icono({ children }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+
+const ICONOS = {
+  comprobantes: <Icono><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M8 4v16" /></Icono>,
+  historico: <Icono><path d="M6 3h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /><path d="M14 3v5h5" /></Icono>,
+  f931: <Icono><path d="M6 3h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /><path d="M9 13h6M9 17h6M9 9h2" /></Icono>,
+};
+
+function Seccion({ icono, titulo, descripcion, estado, children }) {
+  return (
+    <section className="cd-seccion">
+      <header className="cd-seccion-info">
+        <span className="cd-icono">{icono}</span>
+        <div className="cd-seccion-titulos">
+          <h3>{titulo}{estado}</h3>
+          <p>{descripcion}</p>
+        </div>
+      </header>
+      <div className="cd-seccion-cuerpo">{children}</div>
+    </section>
+  );
+}
+
+function Mensaje({ estado }) {
+  if (!estado) return null;
+  return <p className={`cd-mensaje ${estado.tipo}`} role="status">{estado.mensaje}</p>;
+}
+
+function EstadoArchivo({ archivo, onElegirRazonSocial }) {
+  if (archivo.cargando) return <span className="cd-archivo-estado">Analizando…</span>;
   if (archivo.error === RAZON_SOCIAL_DESCONOCIDA) {
     return (
-      <span className="staged-estado staged-sin-razon">
-        Este archivo no trae el CUIT — elegí a mano de quién es:
-        <span className="staged-razon-botones">
+      <span className="cd-archivo-estado cd-archivo-aviso">
+        Este archivo no trae el CUIT. ¿De quién es?
+        <span className="cd-archivo-elegir">
           <button type="button" onClick={() => onElegirRazonSocial('NT')}>NT</button>
           <button type="button" onClick={() => onElegirRazonSocial('Target')}>Target</button>
         </span>
       </span>
     );
   }
-  if (archivo.error) return <span className="staged-estado staged-error">{archivo.error}</span>;
-  return <span className="staged-estado staged-listo">Listo para cargar</span>;
+  if (archivo.error) return <span className="cd-archivo-estado cd-archivo-error">{archivo.error}</span>;
+  return <span className="cd-archivo-estado cd-archivo-listo">Listo para cargar</span>;
 }
 
-function agruparStaged(archivos) {
+function agruparArchivos(archivos) {
   const grupos = new Map();
   for (const a of archivos) {
     const razon = a.razonSocial || 'Sin detectar';
@@ -44,7 +83,24 @@ function agruparStaged(archivos) {
   return [...grupos.values()].sort((a, b) => (a.razon + a.periodo).localeCompare(b.razon + b.periodo));
 }
 
-export default function CargarDatos({ onDatosActualizados, visible }) {
+function IconoProgreso({ estado }) {
+  if (estado === 'cargando') return <span className="cd-spinner" aria-hidden="true" />;
+  if (estado === 'ok') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+    );
+  }
+  if (estado === 'error') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M12 7v6M12 17h.01" /></svg>
+    );
+  }
+  return <span className="cd-punto" aria-hidden="true" />;
+}
+
+const TEXTO_PROGRESO = { pendiente: 'En espera', cargando: 'Descargando de ARCA…' };
+
+export default function CargarDatos({ onDatosActualizados }) {
   const [subiendoHistorico, setSubiendoHistorico] = useState(false);
   const [estadoHistorico, setEstadoHistorico] = useState(null);
   const [subiendo931, setSubiendo931] = useState(false);
@@ -54,6 +110,7 @@ export default function CargarDatos({ onDatosActualizados, visible }) {
   const [guardandoPorcentaje, setGuardandoPorcentaje] = useState(false);
   const [estadoPorcentaje, setEstadoPorcentaje] = useState(null);
 
+  // Subida manual de Mis Comprobantes
   const [staged, setStaged] = useState([]);
   const [cargandoTodo, setCargandoTodo] = useState(false);
   const [estadoMesEnCurso, setEstadoMesEnCurso] = useState(null);
@@ -62,29 +119,16 @@ export default function CargarDatos({ onDatosActualizados, visible }) {
 
   // Carga automática desde ARCA: el backend entra con la clave fiscal de sus variables de entorno.
   const [arcaEstado, setArcaEstado] = useState(null);
-  const [modoPeriodo, setModoPeriodo] = useState('actual'); // 'actual' | 'anterior' | 'otro'
+  const [modoPeriodo, setModoPeriodo] = useState('actual');
   const [periodoOtro, setPeriodoOtro] = useState('');
+  const [razonesArca, setRazonesArca] = useState(RAZONES_ARCA);
   const [sincronizando, setSincronizando] = useState(false);
   const [progresoArca, setProgresoArca] = useState([]);
-  const [razonesArca, setRazonesArca] = useState(RAZONES_ARCA); // razones sociales tildadas
-
-  const [razonSocialInterna, setRazonSocialInterna] = useState('Target');
-  const [subiendoInternaConciliacion, setSubiendoInternaConciliacion] = useState(false);
-  const [estadoInternaConciliacion, setEstadoInternaConciliacion] = useState(null);
-
-  const [razonSocialCredito, setRazonSocialCredito] = useState('Target');
-  const [periodoCredito, setPeriodoCredito] = useState('');
-  const [montoCredito, setMontoCredito] = useState('');
-  const [descripcionCredito, setDescripcionCredito] = useState('');
-  const [guardandoCredito, setGuardandoCredito] = useState(false);
-  const [estadoCredito, setEstadoCredito] = useState(null);
-  const [historialCredito, setHistorialCredito] = useState([]);
 
   useEffect(() => {
     api.obtenerPorcentaje931()
       .then((r) => { setPorcentaje931(String(r.porcentaje)); setPorcentaje931Guardado(r.porcentaje); })
       .catch(() => {});
-    cargarHistorialCredito();
     api.arcaEstado().then(setArcaEstado).catch(() => {});
   }, []);
 
@@ -119,35 +163,6 @@ export default function CargarDatos({ onDatosActualizados, visible }) {
     onDatosActualizados?.();
     setHistorialKey((k) => k + 1);
     setSincronizando(false);
-  }
-
-  function cargarHistorialCredito() {
-    api.listarCreditoManual().then(setHistorialCredito).catch(() => {});
-  }
-
-  async function agregarCredito(e) {
-    e.preventDefault();
-    setGuardandoCredito(true);
-    setEstadoCredito(null);
-    try {
-      await api.agregarCreditoManual(razonSocialCredito, periodoCredito, montoCredito, descripcionCredito);
-      setEstadoCredito({ tipo: 'ok', mensaje: `Crédito cargado para ${razonSocialCredito} — ${periodoLabel(periodoCredito)}.` });
-      setMontoCredito('');
-      setDescripcionCredito('');
-      cargarHistorialCredito();
-      onDatosActualizados?.();
-    } catch (err) {
-      setEstadoCredito({ tipo: 'error', mensaje: err.message });
-    } finally {
-      setGuardandoCredito(false);
-    }
-  }
-
-  async function borrarCredito(id) {
-    if (!window.confirm('¿Borrar esta carga de crédito fiscal manual?')) return;
-    await api.eliminarCreditoManual(id);
-    cargarHistorialCredito();
-    onDatosActualizados?.();
   }
 
   async function guardarPorcentaje931() {
@@ -222,28 +237,6 @@ export default function CargarDatos({ onDatosActualizados, visible }) {
     }
   }
 
-  async function handleInternaConciliacion(file) {
-    setSubiendoInternaConciliacion(true);
-    setEstadoInternaConciliacion(null);
-    try {
-      const r = await api.importarConciliacionInterna(file, razonSocialInterna);
-      setEstadoInternaConciliacion({
-        tipo: 'ok',
-        mensaje: `${r.comprobantes} comprobantes cargados${r.omitidos > 0 ? ` (${r.omitidos} filas omitidas por datos incompletos)` : ''}.`,
-      });
-    } catch (err) {
-      setEstadoInternaConciliacion({ tipo: 'error', mensaje: err.message });
-    } finally {
-      setSubiendoInternaConciliacion(false);
-    }
-  }
-
-  async function vaciarInternaConciliacion() {
-    if (!window.confirm(`¿Borrar todos los comprobantes internos cargados para ${razonSocialInterna}?`)) return;
-    await api.borrarConciliacionInterna(razonSocialInterna);
-    setEstadoInternaConciliacion({ tipo: 'ok', mensaje: `Comprobantes internos de ${razonSocialInterna} borrados.` });
-  }
-
   function agregarArchivos(files) {
     setEstadoMesEnCurso(null);
     const nuevos = files.map((file) => ({ id: proximoId.current++, file, nombre: file.name, cargando: true }));
@@ -305,186 +298,187 @@ export default function CargarDatos({ onDatosActualizados, visible }) {
     setCargandoTodo(false);
   }
 
-  const grupos = agruparStaged(staged);
+  const grupos = agruparArchivos(staged);
   const hayAlgoParaCargar = staged.some((a) => !a.error && !a.cargando);
 
+  const motivoDeshabilitado = !periodoArca ? 'Elegí el mes que querés cargar.'
+    : razonesArca.length === 0 ? 'Elegí al menos una razón social.'
+    : null;
+
   return (
-    <div className="cargar-datos">
-      <div className="cargar-intro">
+    <div className="cargar-datos cd">
+      <div className="cd-encabezado">
         <h2>Cargar datos</h2>
-        <p className="nota">Estas fuentes se combinan para armar la posición de cada razón social: los PDF de las DDJJ ya presentadas (histórico), el Excel de comprobantes del mes que todavía no se presentó y el Formulario 931.</p>
+        <p>Las fuentes que arman la posición de IVA de cada razón social.</p>
       </div>
 
-      <div className="cargar-grid">
-        <div className="fuente-card">
-          <div className="fuente-card-header">
-            <span className="fuente-icono" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <path d="M6 3h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" strokeLinejoin="round" />
-                <path d="M14 3v5h5" strokeLinejoin="round" />
-              </svg>
-            </span>
-            <div>
-              <h3>Históricos</h3>
-              <p>
-                DDJJ ya presentada — PDF "F.2051 - DJ IVA" de ARCA. La app detecta sola si es NT o
-                Target por el CUIT del PDF, y de qué mes y año es por el período que trae el PDF —
-                sirve igual para cargar años anteriores (ej. 2025) y así comparar un mes contra el
-                mismo mes del año pasado en "Resultado fiscal por mes" más abajo.
-              </p>
-            </div>
-          </div>
+      <div className="cd-panel">
+        <Seccion
+          icono={ICONOS.comprobantes}
+          titulo="Mis Comprobantes"
+          descripcion="Emitidos y Recibidos de ARCA, por razón social y mes."
+          estado={arcaEstado?.configurado ? <span className="cd-pastilla">ARCA conectado</span> : null}
+        >
+          {arcaEstado?.configurado && (
+            <div className="cd-automatica">
+              <div className="cd-controles">
+                <div className="cd-campo">
+                  <span className="cd-etiqueta" id="cd-etiqueta-periodo">Período</span>
+                  <div className="cd-campo-linea">
+                    <div className="cd-segmentado" role="radiogroup" aria-labelledby="cd-etiqueta-periodo">
+                      {MODOS_PERIODO.map(([modo, texto]) => (
+                        <button
+                          key={modo}
+                          type="button"
+                          role="radio"
+                          aria-checked={modoPeriodo === modo}
+                          className={modoPeriodo === modo ? 'activo' : ''}
+                          onClick={() => setModoPeriodo(modo)}
+                          disabled={sincronizando}
+                        >
+                          {texto}
+                        </button>
+                      ))}
+                    </div>
+                    {modoPeriodo === 'otro' && (
+                      <input
+                        type="month"
+                        className="cd-input"
+                        aria-label="Mes a cargar"
+                        value={periodoOtro}
+                        max={arcaEstado.periodo_actual}
+                        onChange={(e) => setPeriodoOtro(e.target.value)}
+                        disabled={sincronizando}
+                      />
+                    )}
+                  </div>
+                </div>
 
+                <div className="cd-campo">
+                  <span className="cd-etiqueta" id="cd-etiqueta-razones">Razón social</span>
+                  <div className="cd-opciones" role="group" aria-labelledby="cd-etiqueta-razones">
+                    {RAZONES_ARCA.map((razon) => {
+                      const activa = razonesArca.includes(razon);
+                      return (
+                        <label key={razon} className={`cd-opcion ${activa ? 'activa' : ''} ${sincronizando ? 'deshabilitada' : ''}`}>
+                          <input type="checkbox" checked={activa} onChange={() => alternarRazonArca(razon)} disabled={sincronizando} />
+                          <span className="cd-opcion-casilla" aria-hidden="true">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+                          </span>
+                          <span className="cd-opcion-texto">{razon}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <button type="button" className="cd-boton cd-boton-primario" onClick={cargarDesdeArca} disabled={sincronizando || Boolean(motivoDeshabilitado)}>
+                  {sincronizando && <span className="cd-spinner cd-spinner-blanco" aria-hidden="true" />}
+                  {sincronizando ? 'Cargando…' : 'Cargar datos'}
+                </button>
+              </div>
+
+              <p className="cd-resumen">
+                {motivoDeshabilitado
+                  ? motivoDeshabilitado
+                  : <>Descarga Emitidos y Recibidos de <strong>{listaDeRazones(razonesArca)}</strong> · <strong>{periodoLabelCompleto(periodoArca)}</strong>. Reemplaza lo ya cargado de ese mes.</>}
+              </p>
+
+              {progresoArca.length > 0 && (
+                <ul className="cd-progreso" aria-live="polite">
+                  {progresoArca.map((p) => (
+                    <li key={p.razon} className={`cd-progreso-fila ${p.estado}`}>
+                      <span className="cd-progreso-icono"><IconoProgreso estado={p.estado} /></span>
+                      <span className="cd-progreso-razon">{p.razon}</span>
+                      <span className="cd-progreso-detalle">{p.detalle || TEXTO_PROGRESO[p.estado]}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {arcaEstado && !arcaEstado.configurado && (
+            <p className="cd-aviso">La carga automática desde ARCA no está configurada en el servidor (falta la variable de entorno ARCA_CLAVE). Mientras tanto se pueden subir los archivos a mano.</p>
+          )}
+
+          <div className="cd-manual">
+            <Dropzone
+              compact
+              accept=".xlsx,.csv,.zip"
+              multiple
+              label="O subí los archivos a mano: Excel o .zip de Mis Comprobantes"
+              hint='El nombre debe incluir "Emitidos" o "Recibidos"; la app detecta razón social y período'
+              onFiles={agregarArchivos}
+            />
+
+            {grupos.length > 0 && (
+              <div className="cd-archivos">
+                {grupos.map((grupo) => (
+                  <div key={`${grupo.razon}-${grupo.periodo}`} className="cd-archivos-grupo">
+                    <div className="cd-archivos-titulo">
+                      {grupo.razon} · {grupo.periodo === '—' ? 'período por detectar' : periodoLabel(grupo.periodo)}
+                    </div>
+                    {grupo.archivos.map((a) => (
+                      <div key={a.id} className="cd-archivo">
+                        <div className="cd-archivo-info">
+                          <span className="cd-archivo-nombre" title={a.nombre}>{a.nombre}</span>
+                          <EstadoArchivo archivo={a} onElegirRazonSocial={(r) => elegirRazonSocial(a.id, r)} />
+                        </div>
+                        <button type="button" className="cd-quitar" onClick={() => quitarArchivo(a.id)} aria-label={`Quitar ${a.nombre}`} disabled={cargandoTodo}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                <div className="cd-archivos-accion">
+                  <button type="button" className="cd-boton cd-boton-primario" onClick={cargarTodo} disabled={cargandoTodo || !hayAlgoParaCargar}>
+                    {cargandoTodo && <span className="cd-spinner cd-spinner-blanco" aria-hidden="true" />}
+                    {cargandoTodo ? 'Cargando…' : 'Cargar archivos'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <Mensaje estado={estadoMesEnCurso} />
+          </div>
+        </Seccion>
+
+        <Seccion
+          icono={ICONOS.historico}
+          titulo="DDJJ presentadas"
+          descripcion='PDF "F.2051 - DJ IVA". Detecta razón social y período; sirve también para años anteriores.'
+        >
           <Dropzone
+            compact
             accept=".pdf"
             label={subiendoHistorico ? 'Procesando…' : 'Arrastrá o elegí el PDF de la DDJJ'}
             hint="Formato F.2051 - DJ IVA - SIMPLE"
             disabled={subiendoHistorico}
             onFile={handleHistorico}
           />
-          {estadoHistorico && <p className={`estado-mensaje ${estadoHistorico.tipo}`}>{estadoHistorico.mensaje}</p>}
-        </div>
+          <Mensaje estado={estadoHistorico} />
+        </Seccion>
 
-        <div className="fuente-card">
-          <div className="fuente-card-header">
-            <span className="fuente-icono" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <rect x="3" y="4" width="18" height="16" rx="2" />
-                <path d="M3 9h18M8 4v16" strokeLinecap="round" />
-              </svg>
-            </span>
-            <div>
-              <h3>Mis Comprobantes (Emitidos - Recibidos)</h3>
-              <p>Excel "Mis Comprobantes Emitidos" o "Recibidos" de ARCA (o el CSV de "Consulta" cuando el período tiene demasiados comprobantes para bajar en Excel — subí el .zip tal cual lo baja ARCA, sin descomprimir). La app detecta sola la razón social y el período de cada comprobante.</p>
-            </div>
-          </div>
-
-          {arcaEstado && (
-            <div className="arca-auto">
-              {arcaEstado.configurado ? (
-                <>
-                  <div className="razon-tabs">
-                    {[['actual', 'Este mes'], ['anterior', 'Mes pasado'], ['otro', 'Otro mes']].map(([modo, texto]) => (
-                      <button key={modo} type="button" className={`razon-tab ${modoPeriodo === modo ? 'active' : ''}`} onClick={() => setModoPeriodo(modo)} disabled={sincronizando}>
-                        {texto}
-                      </button>
-                    ))}
-                  </div>
-                  {modoPeriodo === 'otro' && (
-                    <input type="month" value={periodoOtro} max={arcaEstado.periodo_actual} onChange={(e) => setPeriodoOtro(e.target.value)} disabled={sincronizando} />
-                  )}
-                  <div className="razon-tabs">
-                    {RAZONES_ARCA.map((razon) => (
-                      <label key={razon} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: sincronizando ? 'default' : 'pointer' }}>
-                        <input type="checkbox" checked={razonesArca.includes(razon)} onChange={() => alternarRazonArca(razon)} disabled={sincronizando} />
-                        {razon}
-                      </label>
-                    ))}
-                  </div>
-                  <button type="button" className="btn-cargar-todo" onClick={cargarDesdeArca} disabled={sincronizando || !periodoArca || razonesArca.length === 0}>
-                    {sincronizando ? 'Cargando desde ARCA…'
-                      : !periodoArca ? 'Elegí un mes'
-                      : razonesArca.length === 0 ? 'Elegí al menos una razón social'
-                      : `Cargar ${razonesArca.join(' y ')} de ${periodoLabel(periodoArca)}`}
-                  </button>
-                  <p className="nota">
-                    Recién al apretar el botón la app entra a ARCA, baja Emitidos y Recibidos de lo que tildaste y lo
-                    carga, reemplazando lo que ya hubiera de ese mes. Tarda un par de minutos por razón social.
-                  </p>
-                  {progresoArca.length > 0 && (
-                    <div className="staged-lista">
-                      {progresoArca.map((p) => (
-                        <div key={p.razon} className="staged-item">
-                          <div className="staged-item-info">
-                            <span className="staged-item-nombre">{p.razon}</span>
-                            <span className={`staged-estado ${p.estado === 'ok' ? 'staged-listo' : p.estado === 'error' ? 'staged-error' : 'staged-cargando'}`}>
-                              {p.estado === 'pendiente' ? 'En espera' : p.estado === 'cargando' ? 'Cargando…' : p.detalle}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="nota">La carga automática desde ARCA no está configurada (falta la variable de entorno ARCA_CLAVE en el servidor). Mientras tanto se pueden subir los archivos a mano.</p>
-              )}
-            </div>
-          )}
-
+        <Seccion
+          icono={ICONOS.f931}
+          titulo="Formulario 931"
+          descripcion='PDF "Declaración en línea F.931". Detecta razón social y período, y guarda la Suma de Rem. 10.'
+        >
           <Dropzone
-            accept=".xlsx,.csv,.zip"
-            multiple
-            label="Arrastrá o elegí uno o varios Excel, CSV o ZIP de comprobantes"
-            hint='El nombre debe incluir "Emitidos" o "Recibidos"'
-            onFiles={agregarArchivos}
-          />
-
-          {grupos.length > 0 && (
-            <div className="staged-lista">
-              {grupos.map((grupo) => (
-                <div key={`${grupo.razon}-${grupo.periodo}`} className="staged-grupo">
-                  <div className="staged-grupo-titulo">
-                    {grupo.razon} — {grupo.periodo === '—' ? 'período por detectar' : periodoLabel(grupo.periodo)}
-                  </div>
-                  {grupo.archivos.map((a) => (
-                    <div key={a.id} className="staged-item">
-                      <div className="staged-item-info">
-                        <span className="staged-item-nombre">{a.nombre}</span>
-                        <EstadoStaged archivo={a} onElegirRazonSocial={(r) => elegirRazonSocial(a.id, r)} />
-                      </div>
-                      <button
-                        type="button"
-                        className="staged-item-quitar"
-                        onClick={() => quitarArchivo(a.id)}
-                        aria-label={`Quitar ${a.nombre}`}
-                        disabled={cargandoTodo}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ))}
-              <button type="button" className="btn-cargar-todo" onClick={cargarTodo} disabled={cargandoTodo || !hayAlgoParaCargar}>
-                {cargandoTodo ? 'Cargando…' : 'Cargar toda la información'}
-              </button>
-            </div>
-          )}
-
-          {estadoMesEnCurso && <p className={`estado-mensaje ${estadoMesEnCurso.tipo}`}>{estadoMesEnCurso.mensaje}</p>}
-        </div>
-
-        <div className="fuente-card">
-          <div className="fuente-card-header">
-            <span className="fuente-icono" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <path d="M6 3h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" strokeLinejoin="round" />
-                <path d="M9 13h6M9 17h6M9 9h2" strokeLinecap="round" />
-              </svg>
-            </span>
-            <div>
-              <h3>Formulario 931</h3>
-              <p>PDF "Declaración en línea Formulario F.931" de ARCA. La app detecta sola la razón social y el período, y guarda la Suma de Rem. 10.</p>
-            </div>
-          </div>
-
-          <Dropzone
+            compact
             accept=".pdf"
             label={subiendo931 ? 'Procesando…' : 'Arrastrá o elegí el PDF del 931'}
             hint="Formato Declaración en línea Formulario F.931"
             disabled={subiendo931}
             onFile={handle931}
           />
-          {estado931 && <p className={`estado-mensaje ${estado931.tipo}`}>{estado931.mensaje}</p>}
+          <Mensaje estado={estado931} />
 
-          <div className="porcentaje-931">
-            <label htmlFor="porcentaje-931-input">
-              Crédito fiscal = Suma de Rem. 10 ×
-            </label>
-            <div className="porcentaje-931-controles">
+          <div className="cd-ajuste">
+            <label htmlFor="cd-porcentaje-931">Crédito fiscal = Suma de Rem. 10 ×</label>
+            <div className="cd-input-sufijo">
               <input
-                id="porcentaje-931-input"
+                id="cd-porcentaje-931"
                 type="number"
                 step="0.1"
                 min="0"
@@ -493,132 +487,19 @@ export default function CargarDatos({ onDatosActualizados, visible }) {
                 onChange={(e) => setPorcentaje931(e.target.value)}
               />
               <span>%</span>
-              <button
-                type="button"
-                className="btn-desglose"
-                onClick={guardarPorcentaje931}
-                disabled={guardandoPorcentaje || porcentaje931 === '' || Number(porcentaje931) === porcentaje931Guardado}
-              >
-                {guardandoPorcentaje ? 'Guardando…' : 'Guardar'}
-              </button>
             </div>
-            {estadoPorcentaje && <p className={`estado-mensaje ${estadoPorcentaje.tipo}`}>{estadoPorcentaje.mensaje}</p>}
-          </div>
-        </div>
-
-        <div className="fuente-card">
-          <div className="fuente-card-header">
-            <span className="fuente-icono" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M9 12h6M12 9v6" strokeLinecap="round" />
-              </svg>
-            </span>
-            <div>
-              <h3>Crédito fiscal manual</h3>
-              <p>Un monto fijo por período para comprobantes que no aparecen en ARCA pero se pueden tomar como crédito fiscal. Se suma al Crédito Fiscal de ese período.</p>
-            </div>
-          </div>
-
-          <form className="credito-manual-form" onSubmit={agregarCredito}>
-            <div className="razon-tabs">
-              {RAZONES.map((r) => (
-                <button key={r} type="button" className={`razon-tab ${razonSocialCredito === r ? 'active' : ''}`} onClick={() => setRazonSocialCredito(r)}>
-                  {r}
-                </button>
-              ))}
-            </div>
-            <input
-              type="month"
-              value={periodoCredito}
-              onChange={(e) => setPeriodoCredito(e.target.value)}
-              required
-            />
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              placeholder="Monto"
-              value={montoCredito}
-              onChange={(e) => setMontoCredito(e.target.value)}
-              required
-            />
-            <input
-              type="text"
-              placeholder="Descripción (opcional)"
-              value={descripcionCredito}
-              onChange={(e) => setDescripcionCredito(e.target.value)}
-            />
-            <button type="submit" className="btn-desglose" disabled={guardandoCredito || !periodoCredito || !montoCredito}>
-              {guardandoCredito ? 'Agregando…' : 'Agregar'}
+            <button
+              type="button"
+              className="cd-boton cd-boton-secundario"
+              onClick={guardarPorcentaje931}
+              disabled={guardandoPorcentaje || porcentaje931 === '' || Number(porcentaje931) === porcentaje931Guardado}
+            >
+              {guardandoPorcentaje ? 'Guardando…' : 'Guardar'}
             </button>
-          </form>
-          {estadoCredito && <p className={`estado-mensaje ${estadoCredito.tipo}`}>{estadoCredito.mensaje}</p>}
-
-          {historialCredito.length > 0 && (
-            <ul className="credito-manual-historial">
-              {historialCredito.map((c) => (
-                <li key={c.id}>
-                  <span className="credito-manual-item-info">
-                    <strong>{c.razon_social}</strong> — {periodoLabel(c.periodo)} — {money(c.monto)}
-                    {c.descripcion && <span className="credito-manual-descripcion"> ({c.descripcion})</span>}
-                  </span>
-                  <button type="button" className="staged-item-quitar" onClick={() => borrarCredito(c.id)} aria-label="Borrar">×</button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+          </div>
+          <Mensaje estado={estadoPorcentaje} />
+        </Seccion>
       </div>
-
-      {(!visible || visible('cargar-datos.conciliacion-compras')) && (
-        <>
-          <div className="cargar-intro cargar-intro-seccion">
-            <h2>Conciliación de compras</h2>
-            <p className="nota">Esto alimenta el cruce de comprobantes en Conciliación contra lo que ya tenés cargado arriba en "Mis Comprobantes (Emitidos - Recibidos)".</p>
-          </div>
-
-          <div className="cargar-grid">
-            <div className="fuente-card">
-              <div className="fuente-card-header">
-                <span className="fuente-icono" aria-hidden="true">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                    <path d="M6 3h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" strokeLinejoin="round" />
-                    <path d="M14 3v5h5" strokeLinejoin="round" />
-                  </svg>
-                </span>
-                <div>
-                  <h3>Sistema de gestión interna</h3>
-                  <p>
-                    Todavía no hay un export automático, así que se carga a mano: un Excel con columnas
-                    {' '}<strong>Fecha, Tipo Comprobante, Punto de Venta, Número, CUIT, Proveedor, Total</strong>.
-                    El cruce con ARCA es por CUIT + Tipo + Punto de Venta + Número, así que esos cuatro datos tienen que ser exactos
-                    (Tipo Comprobante puede ser el código AFIP: 1 Factura A, 6 Factura B, 11 Factura C, etc.).
-                  </p>
-                </div>
-              </div>
-              <div className="razon-tabs">
-                {RAZONES.map((r) => (
-                  <button key={r} className={`razon-tab ${razonSocialInterna === r ? 'active' : ''}`} onClick={() => setRazonSocialInterna(r)}>
-                    {r}
-                  </button>
-                ))}
-              </div>
-              <Dropzone
-                accept=".xlsx"
-                label={subiendoInternaConciliacion ? 'Procesando…' : `Arrastrá o elegí el Excel de compras de ${razonSocialInterna}`}
-                hint="Se carga para la razón social seleccionada arriba"
-                disabled={subiendoInternaConciliacion}
-                onFile={handleInternaConciliacion}
-              />
-              {estadoInternaConciliacion && <p className={`estado-mensaje ${estadoInternaConciliacion.tipo}`}>{estadoInternaConciliacion.mensaje}</p>}
-              <p className="conciliacion-borrar">
-                <button type="button" className="link-borrar" onClick={vaciarInternaConciliacion}>Borrar los comprobantes internos cargados de {razonSocialInterna}</button>
-              </p>
-            </div>
-          </div>
-        </>
-      )}
 
       <HistorialCargas refreshKey={historialKey} />
     </div>
