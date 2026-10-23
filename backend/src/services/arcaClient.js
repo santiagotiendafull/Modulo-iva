@@ -180,37 +180,72 @@ async function bajarCsv(mc, tipo, periodo, esMesActual) {
   return resultado;
 }
 
+// El portal de ARCA embebe un video de YouTube con autoplay y carga publicidad y fuentes: nada de eso
+// hace falta para bajar los CSV y, en un Chromium de servidor con poca memoria, pesa de más (una
+// carga llegó a morir con "browser has been closed"). Se cortan las imágenes, los medios y esos hosts.
+const HOSTS_INNECESARIOS = /youtube|ytimg|googlevideo|doubleclick|googleads|googlesyndication|google-analytics|googletagmanager|gstatic|jnn-pa\.googleapis/i;
+async function bloquearInnecesario(context) {
+  await context.route('**/*', (ruta) => {
+    const req = ruta.request();
+    if (['image', 'media', 'font'].includes(req.resourceType()) || HOSTS_INNECESARIOS.test(req.url())) return ruta.abort();
+    return ruta.continue();
+  });
+}
+
+const NAVEGADOR_CERRADO = /has been closed|Target closed|Browser closed|browser has been|crashed/i;
+
+async function descargarUnaVez({ periodo, razon, esMesActual, alProgreso }) {
+  // `paso` queda en el mensaje de error: si el navegador muere de golpe no hay pantalla para describir.
+  let paso = 'abriendo el navegador';
+  const marcar = (texto) => { paso = texto; alProgreso(texto); };
+
+  const browser = await lanzarNavegador();
+  try {
+    const context = await browser.newContext({ locale: 'es-AR', acceptDownloads: true, viewport: { width: 1366, height: 900 } });
+    await bloquearInnecesario(context);
+    const page = await context.newPage();
+    page.setDefaultTimeout(30_000);
+
+    marcar('ingresando a ARCA');
+    await login(page);
+    marcar('abriendo Mis Comprobantes');
+    const mc = await abrirMisComprobantes(context, page);
+    marcar('eligiendo la razón social');
+    await elegirPersona(mc, razon.cuit);
+
+    const resultados = [];
+    for (const tipo of TIPOS) {
+      marcar(`descargando ${tipo}`);
+      const r = await bajarCsv(mc, tipo, periodo, esMesActual);
+      resultados.push(r ? { tipo: tipo.toLowerCase(), ...r } : { tipo: tipo.toLowerCase(), sinComprobantes: true });
+    }
+    return resultados;
+  } catch (err) {
+    const pantallas = browser.isConnected() ? await describirPantallas(browser.contexts()[0]).catch(() => '') : '';
+    const error = new Error(`${mensajeLimpio(err)} (paso: ${paso})${pantallas ? ` [Pantalla: ${pantallas}]` : ''}`);
+    error.navegadorCerrado = NAVEGADOR_CERRADO.test(String(err.message)) || !browser.isConnected();
+    throw error;
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
 // Devuelve [{ tipo: 'emitidos'|'recibidos', nombreArchivo, buffer } | { tipo, sinComprobantes: true }]
 // con el zip tal cual lo entrega ARCA. `alProgreso` (opcional) se llama con un texto corto en cada paso.
 export async function descargarComprobantesArca({ periodo, razonSocial, alProgreso = () => {} }) {
   if (!arcaConfigurado()) throw new Error('Falta configurar la clave fiscal de ARCA (variable de entorno ARCA_CLAVE).');
   const razon = RAZONES_ARCA[razonSocial];
   if (!razon) throw new Error(`Razón social desconocida: ${razonSocial}`);
-  const esMesActual = periodo === periodoActualArgentina();
+  const datos = { periodo, razon, esMesActual: periodo === periodoActualArgentina(), alProgreso };
 
-  const browser = await lanzarNavegador();
   try {
-    const context = await browser.newContext({ locale: 'es-AR', acceptDownloads: true, viewport: { width: 1366, height: 900 } });
-    const page = await context.newPage();
-    page.setDefaultTimeout(30_000);
-
-    alProgreso('Ingresando a ARCA');
-    await login(page);
-    alProgreso('Abriendo Mis Comprobantes');
-    const mc = await abrirMisComprobantes(context, page);
-    await elegirPersona(mc, razon.cuit);
-
-    const resultados = [];
-    for (const tipo of TIPOS) {
-      alProgreso(`Descargando ${tipo}`);
-      const r = await bajarCsv(mc, tipo, periodo, esMesActual);
-      resultados.push(r ? { tipo: tipo.toLowerCase(), ...r } : { tipo: tipo.toLowerCase(), sinComprobantes: true });
-    }
-    return resultados;
+    return await descargarUnaVez(datos);
   } catch (err) {
-    const pantallas = await describirPantallas(browser.contexts()[0]).catch(() => '');
-    throw new Error(`${mensajeLimpio(err)}${pantallas ? ` [Pantalla: ${pantallas}]` : ''}`);
-  } finally {
-    await browser.close().catch(() => {});
+    // Si el que murió fue el navegador (no ARCA: un rechazo de clave o una pantalla distinta no entran
+    // acá) se reintenta una sola vez con uno nuevo.
+    if (!err.navegadorCerrado) throw err;
+    alProgreso('reintentando');
+    await pausa(3000);
+    return descargarUnaVez(datos);
   }
 }
