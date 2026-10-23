@@ -82,33 +82,72 @@ async function abrirMisComprobantes(context, page) {
   else await page.locator('a:has-text("Mis Comprobantes")').first().click();
   const mc = (await nueva) ?? page;
   await mc.waitForURL(/fes\.afip\.gob\.ar\/mcmp/, { timeout: 60_000 });
-  await mc.waitForLoadState('load');
+  await mc.waitForLoadState('domcontentloaded');
   return mc;
 }
 
-async function elegirPersona(mc, cuit) {
+// Vuelve a la lista de personas con "Cambiar persona representada". Después de una descarga ARCA recarga
+// la página sola; si eso pasa justo en este momento el click se pierde, por eso se reintenta una vez.
+async function abrirListaDePersonas(mc, itemLista) {
+  for (let intento = 1; intento <= 2; intento++) {
+    await mc.locator('a[title="Cambiar persona representada"]').click();
+    try {
+      await itemLista.first().waitFor({ state: 'visible', timeout: intento === 1 ? 15_000 : 30_000 });
+      return;
+    } catch (err) {
+      if (intento === 2) throw err;
+    }
+  }
+}
+
+// `primera`: es la primera razón social de la sesión (todavía no se eligió ninguna persona). Las
+// siguientes se eligen en la misma sesión de ARCA, sin volver a ingresar.
+async function elegirPersona(mc, cuit, { primera }) {
   // Con el CUIT propio el texto aparece también en la tarjeta de arriba y en el encabezado: los ítems
   // de la lista "Representar a" son los enlaces con href="#" que quedan al final del documento.
   const itemLista = mc.locator(`a[href="#"]:has-text("${formatCuit(cuit)}")`);
-  const menu = mc.locator('#btnEmitidos');
 
-  // Al entrar, Mis Comprobantes pasa por pantallas intermedias antes de mostrar la lista de personas
-  // (o el menú, si ya hay una persona elegida): se espera a lo primero que aparezca en vez de
-  // decidir por la URL del momento, que puede ser la de una pantalla de paso.
-  const aparecio = await Promise.race([
-    itemLista.first().waitFor({ state: 'visible', timeout: 45_000 }).then(() => 'lista'),
-    menu.waitFor({ state: 'attached', timeout: 45_000 }).then(() => 'menu'),
-  ]);
-  if (aparecio === 'menu') {
-    await mc.locator('a[title="Cambiar persona representada"]').click();
-    await itemLista.first().waitFor({ state: 'visible', timeout: 30_000 });
+  if (primera) {
+    // Al entrar, Mis Comprobantes pasa por pantallas intermedias antes de mostrar la lista de personas
+    // (o el menú, si ya hay una persona elegida): se espera a lo primero que aparezca en vez de
+    // decidir por la URL del momento, que puede ser la de una pantalla de paso.
+    const aparecio = await Promise.race([
+      itemLista.first().waitFor({ state: 'visible', timeout: 45_000 }).then(() => 'lista'),
+      mc.locator('#btnEmitidos').waitFor({ state: 'attached', timeout: 45_000 }).then(() => 'menu'),
+    ]);
+    if (aparecio === 'menu') await abrirListaDePersonas(mc, itemLista);
+  } else {
+    await abrirListaDePersonas(mc, itemLista);
   }
   await itemLista.last().click();
   // Con la persona elegida ARCA muestra el menú (Emitidos / Recibidos). No se espera a que esos botones
   // estén "visibles": tienen una animación de entrada que en el Chromium de servidor no siempre termina,
   // y de todos modos son enlaces comunes — bajarCsv va directo a la dirección de cada uno.
   await mc.waitForURL(/setearContribuyente|menuPrincipal/, { timeout: 30_000 });
-  await mc.waitForLoadState('load');
+}
+
+// goto que tolera que ARCA le cambie la página justo en ese instante (su recarga automática posterior a
+// una descarga): en ese caso se vuelve a pedir la dirección.
+async function irA(mc, url) {
+  try {
+    await mc.goto(url, { waitUntil: 'domcontentloaded' });
+  } catch (err) {
+    if (!/interrupted|ERR_ABORTED/i.test(String(err.message))) throw err;
+    await mc.goto(url, { waitUntil: 'domcontentloaded' });
+  }
+}
+
+function cronometro() {
+  let desde = Date.now();
+  const etapas = [];
+  return {
+    etapas,
+    marcar(etapa) {
+      const ahora = Date.now();
+      etapas.push({ etapa, ms: ahora - desde });
+      desde = ahora;
+    },
+  };
 }
 
 // Texto corto de lo que está en pantalla, para que un error diga dónde se trabó (sin datos sensibles:
@@ -160,7 +199,7 @@ async function fijarRango(mc, periodo, esMesActual) {
 async function bajarCsv(mc, tipo, periodo, esMesActual) {
   // Equivale a clickear "Emitidos" / "Recibidos" en el menú (son enlaces a comprobantesEmitidos.do y
   // comprobantesRecibidos.do); la persona ya quedó elegida en la sesión de ARCA.
-  await mc.goto(new URL(`comprobantes${tipo}.do`, mc.url()).href, { waitUntil: 'load' });
+  await irA(mc, new URL(`comprobantes${tipo}.do`, mc.url()).href);
   await mc.locator('#fechaEmision').waitFor();
   await fijarRango(mc, periodo, esMesActual);
   await mc.locator('#buscarComprobantes').click();
@@ -173,11 +212,10 @@ async function bajarCsv(mc, tipo, periodo, esMesActual) {
   }
   const [descarga] = await Promise.all([mc.waitForEvent('download', { timeout: 120_000 }), botonCsv.click()]);
   const archivo = await descarga.path();
-  const resultado = { nombreArchivo: descarga.suggestedFilename(), buffer: fs.readFileSync(archivo) };
-
-  // Tras bajar el archivo ARCA recarga sola: se le da un momento antes de seguir con lo próximo.
-  await pausa(2500);
-  return resultado;
+  // No hace falta esperar a la recarga que ARCA hace sola después de la descarga: el archivo ya está
+  // completo y lo siguiente (otra pantalla o cambiar de persona) tolera esa recarga (ver irA y
+  // abrirListaDePersonas).
+  return { nombreArchivo: descarga.suggestedFilename(), buffer: fs.readFileSync(archivo) };
 }
 
 // El portal de ARCA embebe un video de YouTube con autoplay y carga publicidad y fuentes: nada de eso
@@ -194,12 +232,28 @@ async function bloquearInnecesario(context) {
 
 const NAVEGADOR_CERRADO = /has been closed|Target closed|Browser closed|browser has been|crashed/i;
 
-async function descargarUnaVez({ periodo, razon, esMesActual, alProgreso }) {
+// Arma el error que se muestra: sin el "Call log" de Playwright, con el paso en que estaba y, si el
+// navegador sigue vivo, qué había en pantalla. `navegadorCerrado` marca el caso en que murió el propio
+// navegador (no ARCA), que es el único que justifica un reintento con uno nuevo.
+async function construirError(err, browser, paso) {
+  if (err.construido) return err;
+  const pantallas = browser.isConnected() ? await describirPantallas(browser.contexts()[0]).catch(() => '') : '';
+  const error = new Error(`${mensajeLimpio(err)} (paso: ${paso})${pantallas ? ` [Pantalla: ${pantallas}]` : ''}`);
+  error.construido = true;
+  error.navegadorCerrado = NAVEGADOR_CERRADO.test(String(err.message)) || !browser.isConnected();
+  return error;
+}
+
+// Una sesión de ARCA: se abre el navegador, se ingresa UNA vez y se baja Emitidos y Recibidos de cada
+// razón social en la misma sesión (cambiando de persona adentro de Mis Comprobantes).
+async function sesionDeDescarga({ periodo, razones, esMesActual, avance }) {
   // `paso` queda en el mensaje de error: si el navegador muere de golpe no hay pantalla para describir.
   let paso = 'abriendo el navegador';
-  const marcar = (texto) => { paso = texto; alProgreso(texto); };
+  const marcar = (texto) => { paso = texto; avance.paso(texto); };
+  const sesion = cronometro();
 
   const browser = await lanzarNavegador();
+  sesion.marcar('navegador');
   try {
     const context = await browser.newContext({ locale: 'es-AR', acceptDownloads: true, viewport: { width: 1366, height: 900 } });
     await bloquearInnecesario(context);
@@ -208,44 +262,66 @@ async function descargarUnaVez({ periodo, razon, esMesActual, alProgreso }) {
 
     marcar('ingresando a ARCA');
     await login(page);
+    sesion.marcar('ingreso a ARCA');
     marcar('abriendo Mis Comprobantes');
     const mc = await abrirMisComprobantes(context, page);
-    marcar('eligiendo la razón social');
-    await elegirPersona(mc, razon.cuit);
+    sesion.marcar('Mis Comprobantes');
+    avance.sesion(sesion.etapas);
 
-    const resultados = [];
-    for (const tipo of TIPOS) {
-      marcar(`descargando ${tipo}`);
-      const r = await bajarCsv(mc, tipo, periodo, esMesActual);
-      resultados.push(r ? { tipo: tipo.toLowerCase(), ...r } : { tipo: tipo.toLowerCase(), sinComprobantes: true });
+    for (const [i, { nombre, cuit }] of razones.entries()) {
+      const crono = cronometro();
+      avance.razonIniciada(nombre);
+      try {
+        marcar(`eligiendo ${nombre}`);
+        await elegirPersona(mc, cuit, { primera: i === 0 });
+        crono.marcar('elegir razón social');
+
+        const descargas = [];
+        for (const tipo of TIPOS) {
+          marcar(`descargando ${tipo} de ${nombre}`);
+          const r = await bajarCsv(mc, tipo, periodo, esMesActual);
+          descargas.push(r ? { tipo: tipo.toLowerCase(), ...r } : { tipo: tipo.toLowerCase(), sinComprobantes: true });
+          crono.marcar(tipo);
+        }
+        // Sin await: la carga en la base de esta razón social corre mientras se baja la siguiente.
+        avance.razonTerminada({ razonSocial: nombre, descargas, tiempos: crono.etapas });
+      } catch (err) {
+        const error = await construirError(err, browser, paso);
+        if (error.navegadorCerrado) throw error;
+        // Un problema de una razón social (pantalla distinta, sin acceso) no frena a la siguiente.
+        avance.razonTerminada({ razonSocial: nombre, error, tiempos: crono.etapas });
+      }
     }
-    return resultados;
   } catch (err) {
-    const pantallas = browser.isConnected() ? await describirPantallas(browser.contexts()[0]).catch(() => '') : '';
-    const error = new Error(`${mensajeLimpio(err)} (paso: ${paso})${pantallas ? ` [Pantalla: ${pantallas}]` : ''}`);
-    error.navegadorCerrado = NAVEGADOR_CERRADO.test(String(err.message)) || !browser.isConnected();
-    throw error;
+    throw await construirError(err, browser, paso);
   } finally {
     await browser.close().catch(() => {});
   }
 }
 
-// Devuelve [{ tipo: 'emitidos'|'recibidos', nombreArchivo, buffer } | { tipo, sinComprobantes: true }]
-// con el zip tal cual lo entrega ARCA. `alProgreso` (opcional) se llama con un texto corto en cada paso.
-export async function descargarComprobantesArca({ periodo, razonSocial, alProgreso = () => {} }) {
+// Baja de ARCA los CSV de las razones sociales pedidas. No devuelve nada: va avisando por `avance`
+//   paso(texto) · sesion(etapas) · razonIniciada(nombre) · razonTerminada({ razonSocial, descargas | error, tiempos })
+// con el zip de cada tipo tal cual lo entrega ARCA ({ tipo, nombreArchivo, buffer } | { tipo, sinComprobantes }).
+export async function descargarComprobantesArca({ periodo, razonesSociales, avance }) {
   if (!arcaConfigurado()) throw new Error('Falta configurar la clave fiscal de ARCA (variable de entorno ARCA_CLAVE).');
-  const razon = RAZONES_ARCA[razonSocial];
-  if (!razon) throw new Error(`Razón social desconocida: ${razonSocial}`);
-  const datos = { periodo, razon, esMesActual: periodo === periodoActualArgentina(), alProgreso };
+  const todas = razonesSociales.map((nombre) => {
+    if (!RAZONES_ARCA[nombre]) throw new Error(`Razón social desconocida: ${nombre}`);
+    return { nombre, cuit: RAZONES_ARCA[nombre].cuit };
+  });
+  const esMesActual = periodo === periodoActualArgentina();
+
+  const terminadas = new Set();
+  const seguimiento = { ...avance, razonTerminada: (r) => { terminadas.add(r.razonSocial); return avance.razonTerminada(r); } };
+  const pendientes = () => todas.filter((r) => !terminadas.has(r.nombre));
 
   try {
-    return await descargarUnaVez(datos);
+    await sesionDeDescarga({ periodo, razones: pendientes(), esMesActual, avance: seguimiento });
   } catch (err) {
     // Si el que murió fue el navegador (no ARCA: un rechazo de clave o una pantalla distinta no entran
-    // acá) se reintenta una sola vez con uno nuevo.
-    if (!err.navegadorCerrado) throw err;
-    alProgreso('reintentando');
+    // acá) se reintenta una sola vez con uno nuevo, sólo con las razones sociales que faltaban.
+    if (!err.navegadorCerrado || pendientes().length === 0) throw err;
+    avance.paso('reintentando');
     await pausa(3000);
-    return descargarUnaVez(datos);
+    await sesionDeDescarga({ periodo, razones: pendientes(), esMesActual, avance: seguimiento });
   }
 }

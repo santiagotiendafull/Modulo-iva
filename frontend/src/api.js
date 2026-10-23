@@ -92,11 +92,38 @@ export const api = {
     return req('/importar/mes-en-curso/preview', { method: 'POST', body: form });
   },
   arcaEstado: () => req('/importar/arca/estado'),
-  sincronizarArca: (periodo, razonSocial) => req('/importar/arca/sincronizar', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ periodo, razon_social: razonSocial }),
-  }),
+  // La respuesta es un stream de líneas JSON (una por novedad); `alEvento` recibe cada una apenas llega.
+  // Un error de validación llega como un JSON común con estado 4xx/5xx y se tira como excepción.
+  sincronizarArca: async (periodo, razonesSociales, alEvento) => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${BASE_URL}/importar/arca/sincronizar`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ periodo, razones_sociales: razonesSociales }),
+    });
+    if (res.status === 401) {
+      onUnauthorized?.();
+      throw new Error('Sesión vencida, iniciá sesión de nuevo.');
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Error ${res.status}`);
+    }
+    const lector = res.body.getReader();
+    const decodificador = new TextDecoder();
+    let resto = '';
+    const procesar = (linea) => { if (linea.trim()) alEvento(JSON.parse(linea)); };
+    for (;;) {
+      const { done, value } = await lector.read();
+      if (done) break;
+      resto += decodificador.decode(value, { stream: true });
+      const lineas = resto.split('\n');
+      resto = lineas.pop();
+      lineas.forEach(procesar);
+    }
+    procesar(resto);
+  },
   importarHistorico: (file) => {
     const form = new FormData();
     form.append('archivo', file);

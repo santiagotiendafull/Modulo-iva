@@ -7,7 +7,7 @@ import { importarPdfBuffer, parseSoloPdfBuffer, existeHistorico, importarManual 
 import { importarArchivo, previsualizarArchivo, leerFilasXlsx, leerFilasCsv, extraerCsvDeZip, EMITIDOS_COLS, RECIBIDOS_COLS } from '../services/mesEnCursoService.js';
 import { historialCargas } from '../services/historialCargasService.js';
 import { importarPdfBuffer931, parseSoloPdfBuffer931, existeFormulario931 } from '../services/formulario931Service.js';
-import { estadoSincronizacion, sincronizarDesdeArca } from '../services/arcaSyncService.js';
+import { estadoSincronizacion, prepararSincronizacion } from '../services/arcaSyncService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '..', '..', '..', 'data', 'source');
@@ -126,18 +126,36 @@ router.post('/mes-en-curso', upload.single('archivo'), async (req, res) => {
 });
 
 // "Cargar datos" automático: el backend entra a ARCA con la clave fiscal de las variables de entorno,
-// baja Emitidos y Recibidos de una razón social para el período y los importa (ver arcaSyncService.js).
-// Una razón social por pedido para que cada uno entre en el tiempo máximo de la función serverless.
+// baja Emitidos y Recibidos de las razones sociales pedidas para el período y los importa (ver
+// arcaSyncService.js). Una sola sesión de ARCA para todas, así que la respuesta es un stream de líneas
+// JSON (una por novedad) en vez de un único JSON al final: el frontend muestra el avance en vivo.
 router.get('/arca/estado', (req, res) => {
   res.json(estadoSincronizacion());
 });
 
 router.post('/arca/sincronizar', async (req, res) => {
+  const razones = req.body?.razones_sociales ?? (req.body?.razon_social ? [req.body.razon_social] : []);
+  let tarea;
   try {
-    res.json(await sincronizarDesdeArca({ periodo: req.body?.periodo, razonSocial: req.body?.razon_social }));
+    tarea = prepararSincronizacion({ periodo: req.body?.periodo, razonesSociales: razones });
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    return res.status(err.status || 500).json({ error: err.message });
   }
+
+  res.status(200);
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+  const escribir = (evento) => {
+    if (!res.writableEnded && !res.destroyed) res.write(`${JSON.stringify(evento)}\n`);
+  };
+  try {
+    await tarea.ejecutar(escribir);
+  } catch (err) {
+    escribir({ tipo: 'error', error: err.message });
+  }
+  res.end();
 });
 
 // Parsea el PDF y avisa si ya hay una DDJJ cargada para esa razón social + período, sin escribir nada.

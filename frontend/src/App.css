@@ -825,6 +825,7 @@ select:disabled { opacity: 0.55; cursor: default; }
 .cd-progreso-icono { height: 19px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
 .cd-progreso-razon { font-weight: 700; color: var(--text-h); }
 .cd-progreso-detalle { color: var(--text-muted); overflow-wrap: anywhere; }
+.cd-progreso-tiempos { display: block; margin-top: 1px; font-size: 11.5px; color: var(--text-muted); }
 .cd-progreso-fila.ok .cd-progreso-icono,
 .cd-progreso-fila.ok .cd-progreso-detalle { color: #0a7f0a; }
 .cd-progreso-fila.error { border-color: rgba(208, 59, 59, 0.35); background: rgba(208, 59, 59, 0.04); }

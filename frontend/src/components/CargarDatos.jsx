@@ -84,7 +84,7 @@ function agruparArchivos(archivos) {
 }
 
 function IconoProgreso({ estado }) {
-  if (estado === 'cargando') return <span className="cd-spinner" aria-hidden="true" />;
+  if (estado === 'cargando' || estado === 'importando') return <span className="cd-spinner" aria-hidden="true" />;
   if (estado === 'ok') {
     return (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
@@ -98,7 +98,31 @@ function IconoProgreso({ estado }) {
   return <span className="cd-punto" aria-hidden="true" />;
 }
 
-const TEXTO_PROGRESO = { pendiente: 'En espera', cargando: 'Descargando de ARCA…' };
+const mayuscula = (texto) => texto.charAt(0).toUpperCase() + texto.slice(1);
+
+function textoProgreso(p) {
+  if (p.estado === 'pendiente') return 'En espera';
+  if (p.estado === 'importando') return 'Guardando en la base…';
+  if (p.estado === 'cargando') return `${mayuscula(p.paso || 'trabajando')}…`;
+  return p.detalle;
+}
+
+// 850 ms · 9,4 s · 1 min 5 s
+function formatoDuracion(ms) {
+  if (ms < 1000) return `${ms} ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1).replace('.', ',')} s`;
+  const m = Math.floor(s / 60);
+  return `${m} min ${Math.round(s - m * 60)} s`;
+}
+
+const textoTiempos = (tiempos) => tiempos.map((t) => `${t.etapa} ${formatoDuracion(t.ms)}`).join(' · ');
+
+function detalleDeResultados(resultados) {
+  return resultados
+    .map((x) => `${x.tipo === 'emitidos' ? 'Emitidos' : 'Recibidos'}: ${x.sin_comprobantes ? 'sin comprobantes' : x.comprobantes}`)
+    .join(' · ');
+}
 
 export default function CargarDatos({ onDatosActualizados }) {
   const [subiendoHistorico, setSubiendoHistorico] = useState(false);
@@ -124,6 +148,7 @@ export default function CargarDatos({ onDatosActualizados }) {
   const [razonesArca, setRazonesArca] = useState(RAZONES_ARCA);
   const [sincronizando, setSincronizando] = useState(false);
   const [progresoArca, setProgresoArca] = useState([]);
+  const [resumenArca, setResumenArca] = useState(null); // { sesion: [{ etapa, ms }], totalMs }
 
   useEffect(() => {
     api.obtenerPorcentaje931()
@@ -141,24 +166,44 @@ export default function CargarDatos({ onDatosActualizados }) {
     setRazonesArca((prev) => (prev.includes(razon) ? prev.filter((r) => r !== razon) : RAZONES_ARCA.filter((r) => r === razon || prev.includes(r))));
   }
 
-  // Recién acá se entra a ARCA: elegir período o razón social no dispara nada.
+  // Recién acá se entra a ARCA: elegir período o razón social no dispara nada. Un solo pedido para todas
+  // las razones sociales tildadas (una sola sesión de ARCA); el servidor va avisando cada novedad.
   async function cargarDesdeArca() {
     if (!periodoArca || razonesArca.length === 0) return;
     setSincronizando(true);
+    setResumenArca(null);
     const actualizar = (razon, cambios) => setProgresoArca((prev) => prev.map((p) => (p.razon === razon ? { ...p, ...cambios } : p)));
-    setProgresoArca(razonesArca.map((razon) => ({ razon, estado: 'pendiente' })));
-    // Una razón social por pedido: cada una entra en el tiempo máximo de la función serverless.
-    for (const razon of razonesArca) {
-      actualizar(razon, { estado: 'cargando' });
-      try {
-        const r = await api.sincronizarArca(periodoArca, razon);
-        const detalle = r.resultados
-          .map((x) => `${x.tipo === 'emitidos' ? 'Emitidos' : 'Recibidos'}: ${x.sin_comprobantes ? 'sin comprobantes' : x.comprobantes}`)
-          .join(' · ');
-        actualizar(razon, { estado: 'ok', detalle });
-      } catch (err) {
-        actualizar(razon, { estado: 'error', detalle: err.message });
+    const sinTerminar = (prev, cambios) => prev.map((p) => (p.estado === 'ok' || p.estado === 'error' ? p : { ...p, ...cambios }));
+    setProgresoArca(razonesArca.map((razon, i) => ({ razon, estado: i === 0 ? 'cargando' : 'pendiente', paso: 'abriendo ARCA' })));
+
+    let terminoBien = false;
+    try {
+      await api.sincronizarArca(periodoArca, razonesArca, (ev) => {
+        if (ev.tipo === 'paso') {
+          setProgresoArca((prev) => prev.map((p) => (p.estado === 'cargando' ? { ...p, paso: ev.paso } : p)));
+        } else if (ev.tipo === 'sesion') {
+          setResumenArca((prev) => ({ ...prev, sesion: ev.tiempos }));
+        } else if (ev.tipo === 'razon') {
+          actualizar(ev.razon, {
+            estado: ev.estado,
+            tiempos: ev.tiempos,
+            ...(ev.estado === 'ok' ? { detalle: detalleDeResultados(ev.resultados) } : {}),
+            ...(ev.estado === 'error' ? { detalle: ev.detalle } : {}),
+          });
+        } else if (ev.tipo === 'fin') {
+          terminoBien = true;
+          setResumenArca((prev) => ({ ...prev, totalMs: ev.total_ms }));
+        } else if (ev.tipo === 'error') {
+          setProgresoArca((prev) => sinTerminar(prev, { estado: 'error', detalle: ev.error }));
+        }
+      });
+      if (!terminoBien) {
+        // El stream se cortó sin el aviso final (corte de red o límite de tiempo del servidor): puede que
+        // lo que faltaba igual se haya cargado, por eso se manda a mirar el historial.
+        setProgresoArca((prev) => sinTerminar(prev, { estado: 'error', detalle: 'La conexión se cortó antes de terminar. Revisá el historial de cargas: puede que se haya alcanzado a cargar.' }));
       }
+    } catch (err) {
+      setProgresoArca((prev) => sinTerminar(prev, { estado: 'error', detalle: err.message }));
     }
     onDatosActualizados?.();
     setHistorialKey((k) => k + 1);
@@ -390,10 +435,19 @@ export default function CargarDatos({ onDatosActualizados }) {
                     <li key={p.razon} className={`cd-progreso-fila ${p.estado}`}>
                       <span className="cd-progreso-icono"><IconoProgreso estado={p.estado} /></span>
                       <span className="cd-progreso-razon">{p.razon}</span>
-                      <span className="cd-progreso-detalle">{p.detalle || TEXTO_PROGRESO[p.estado]}</span>
+                      <span className="cd-progreso-detalle">
+                        {textoProgreso(p)}
+                        {p.tiempos?.length > 0 && <span className="cd-progreso-tiempos">{textoTiempos(p.tiempos)}</span>}
+                      </span>
                     </li>
                   ))}
                 </ul>
+              )}
+              {resumenArca?.totalMs != null && (
+                <p className="cd-resumen">
+                  Total <strong>{formatoDuracion(resumenArca.totalMs)}</strong>
+                  {resumenArca.sesion?.length > 0 && <> · sesión de ARCA: {textoTiempos(resumenArca.sesion)}</>}
+                </p>
               )}
             </div>
           )}
