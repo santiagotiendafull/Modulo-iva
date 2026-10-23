@@ -91,6 +91,12 @@ export const api = {
     if (razonSocialManual) form.append('razon_social', razonSocialManual);
     return req('/importar/mes-en-curso/preview', { method: 'POST', body: form });
   },
+  arcaEstado: () => req('/importar/arca/estado'),
+  sincronizarArca: (periodo, razonSocial) => req('/importar/arca/sincronizar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ periodo, razon_social: razonSocial }),
+  }),
   importarHistorico: (file) => {
     const form = new FormData();
     form.append('archivo', file);

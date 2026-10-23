@@ -6,6 +6,12 @@ import HistorialCargas from './HistorialCargas';
 
 const RAZON_SOCIAL_DESCONOCIDA = 'no se pudo determinar la razón social (CUIT) del archivo';
 const RAZONES = ['Target', 'NT'];
+const RAZONES_ARCA = ['NT', 'Target'];
+
+function mesAnterior(periodo) {
+  const [y, m] = periodo.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
 
 function EstadoStaged({ archivo, onElegirRazonSocial }) {
   if (archivo.cargando) return <span className="staged-estado staged-cargando">Analizando…</span>;
@@ -54,6 +60,14 @@ export default function CargarDatos({ onDatosActualizados, visible }) {
   const [historialKey, setHistorialKey] = useState(0);
   const proximoId = useRef(1);
 
+  // Carga automática desde ARCA: el backend entra con la clave fiscal de sus variables de entorno.
+  const [arcaEstado, setArcaEstado] = useState(null);
+  const [modoPeriodo, setModoPeriodo] = useState('actual'); // 'actual' | 'anterior' | 'otro'
+  const [periodoOtro, setPeriodoOtro] = useState('');
+  const [sincronizando, setSincronizando] = useState(false);
+  const [progresoArca, setProgresoArca] = useState([]);
+  const [razonesArca, setRazonesArca] = useState(RAZONES_ARCA); // razones sociales tildadas
+
   const [razonSocialInterna, setRazonSocialInterna] = useState('Target');
   const [subiendoInternaConciliacion, setSubiendoInternaConciliacion] = useState(false);
   const [estadoInternaConciliacion, setEstadoInternaConciliacion] = useState(null);
@@ -71,7 +85,41 @@ export default function CargarDatos({ onDatosActualizados, visible }) {
       .then((r) => { setPorcentaje931(String(r.porcentaje)); setPorcentaje931Guardado(r.porcentaje); })
       .catch(() => {});
     cargarHistorialCredito();
+    api.arcaEstado().then(setArcaEstado).catch(() => {});
   }, []);
+
+  const periodoArca = !arcaEstado ? ''
+    : modoPeriodo === 'actual' ? arcaEstado.periodo_actual
+    : modoPeriodo === 'anterior' ? mesAnterior(arcaEstado.periodo_actual)
+    : periodoOtro;
+
+  function alternarRazonArca(razon) {
+    setRazonesArca((prev) => (prev.includes(razon) ? prev.filter((r) => r !== razon) : RAZONES_ARCA.filter((r) => r === razon || prev.includes(r))));
+  }
+
+  // Recién acá se entra a ARCA: elegir período o razón social no dispara nada.
+  async function cargarDesdeArca() {
+    if (!periodoArca || razonesArca.length === 0) return;
+    setSincronizando(true);
+    const actualizar = (razon, cambios) => setProgresoArca((prev) => prev.map((p) => (p.razon === razon ? { ...p, ...cambios } : p)));
+    setProgresoArca(razonesArca.map((razon) => ({ razon, estado: 'pendiente' })));
+    // Una razón social por pedido: cada una entra en el tiempo máximo de la función serverless.
+    for (const razon of razonesArca) {
+      actualizar(razon, { estado: 'cargando' });
+      try {
+        const r = await api.sincronizarArca(periodoArca, razon);
+        const detalle = r.resultados
+          .map((x) => `${x.tipo === 'emitidos' ? 'Emitidos' : 'Recibidos'}: ${x.sin_comprobantes ? 'sin comprobantes' : x.comprobantes}`)
+          .join(' · ');
+        actualizar(razon, { estado: 'ok', detalle });
+      } catch (err) {
+        actualizar(razon, { estado: 'error', detalle: err.message });
+      }
+    }
+    onDatosActualizados?.();
+    setHistorialKey((k) => k + 1);
+    setSincronizando(false);
+  }
 
   function cargarHistorialCredito() {
     api.listarCreditoManual().then(setHistorialCredito).catch(() => {});
@@ -310,6 +358,59 @@ export default function CargarDatos({ onDatosActualizados, visible }) {
               <p>Excel "Mis Comprobantes Emitidos" o "Recibidos" de ARCA (o el CSV de "Consulta" cuando el período tiene demasiados comprobantes para bajar en Excel — subí el .zip tal cual lo baja ARCA, sin descomprimir). La app detecta sola la razón social y el período de cada comprobante.</p>
             </div>
           </div>
+
+          {arcaEstado && (
+            <div className="arca-auto">
+              {arcaEstado.configurado ? (
+                <>
+                  <div className="razon-tabs">
+                    {[['actual', 'Este mes'], ['anterior', 'Mes pasado'], ['otro', 'Otro mes']].map(([modo, texto]) => (
+                      <button key={modo} type="button" className={`razon-tab ${modoPeriodo === modo ? 'active' : ''}`} onClick={() => setModoPeriodo(modo)} disabled={sincronizando}>
+                        {texto}
+                      </button>
+                    ))}
+                  </div>
+                  {modoPeriodo === 'otro' && (
+                    <input type="month" value={periodoOtro} max={arcaEstado.periodo_actual} onChange={(e) => setPeriodoOtro(e.target.value)} disabled={sincronizando} />
+                  )}
+                  <div className="razon-tabs">
+                    {RAZONES_ARCA.map((razon) => (
+                      <label key={razon} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: sincronizando ? 'default' : 'pointer' }}>
+                        <input type="checkbox" checked={razonesArca.includes(razon)} onChange={() => alternarRazonArca(razon)} disabled={sincronizando} />
+                        {razon}
+                      </label>
+                    ))}
+                  </div>
+                  <button type="button" className="btn-cargar-todo" onClick={cargarDesdeArca} disabled={sincronizando || !periodoArca || razonesArca.length === 0}>
+                    {sincronizando ? 'Cargando desde ARCA…'
+                      : !periodoArca ? 'Elegí un mes'
+                      : razonesArca.length === 0 ? 'Elegí al menos una razón social'
+                      : `Cargar ${razonesArca.join(' y ')} de ${periodoLabel(periodoArca)}`}
+                  </button>
+                  <p className="nota">
+                    Recién al apretar el botón la app entra a ARCA, baja Emitidos y Recibidos de lo que tildaste y lo
+                    carga, reemplazando lo que ya hubiera de ese mes. Tarda un par de minutos por razón social.
+                  </p>
+                  {progresoArca.length > 0 && (
+                    <div className="staged-lista">
+                      {progresoArca.map((p) => (
+                        <div key={p.razon} className="staged-item">
+                          <div className="staged-item-info">
+                            <span className="staged-item-nombre">{p.razon}</span>
+                            <span className={`staged-estado ${p.estado === 'ok' ? 'staged-listo' : p.estado === 'error' ? 'staged-error' : 'staged-cargando'}`}>
+                              {p.estado === 'pendiente' ? 'En espera' : p.estado === 'cargando' ? 'Cargando…' : p.detalle}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="nota">La carga automática desde ARCA no está configurada (falta la variable de entorno ARCA_CLAVE en el servidor). Mientras tanto se pueden subir los archivos a mano.</p>
+              )}
+            </div>
+          )}
 
           <Dropzone
             accept=".xlsx,.csv,.zip"

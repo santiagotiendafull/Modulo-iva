@@ -7,6 +7,7 @@ import { importarPdfBuffer, parseSoloPdfBuffer, existeHistorico, importarManual 
 import { importarArchivo, previsualizarArchivo, leerFilasXlsx, leerFilasCsv, extraerCsvDeZip, EMITIDOS_COLS, RECIBIDOS_COLS } from '../services/mesEnCursoService.js';
 import { historialCargas } from '../services/historialCargasService.js';
 import { importarPdfBuffer931, parseSoloPdfBuffer931, existeFormulario931 } from '../services/formulario931Service.js';
+import { estadoSincronizacion, sincronizarDesdeArca } from '../services/arcaSyncService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '..', '..', '..', 'data', 'source');
@@ -121,6 +122,21 @@ router.post('/mes-en-curso', upload.single('archivo'), async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// "Cargar datos" automático: el backend entra a ARCA con la clave fiscal de las variables de entorno,
+// baja Emitidos y Recibidos de una razón social para el período y los importa (ver arcaSyncService.js).
+// Una razón social por pedido para que cada uno entre en el tiempo máximo de la función serverless.
+router.get('/arca/estado', (req, res) => {
+  res.json(estadoSincronizacion());
+});
+
+router.post('/arca/sincronizar', async (req, res) => {
+  try {
+    res.json(await sincronizarDesdeArca({ periodo: req.body?.periodo, razonSocial: req.body?.razon_social }));
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 

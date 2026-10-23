@@ -24,3 +24,6 @@ dist-ssr/
 .idea
 .DS_Store
 *.log
+
+# descargas reales de ARCA y capturas del prototipo de exploración (datos fiscales: nunca al repo)
+prototipos/arca/salida/

@@ -1,0 +1,12 @@
+{
+  "name": "prototipo-arca-mis-comprobantes",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "explorar": "node explorar.mjs",
+    "descargar": "node descargar.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.64.1"
+  }
+}
