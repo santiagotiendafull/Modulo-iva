@@ -97,14 +97,18 @@ async function elegirPersona(mc, cuit) {
   // decidir por la URL del momento, que puede ser la de una pantalla de paso.
   const aparecio = await Promise.race([
     itemLista.first().waitFor({ state: 'visible', timeout: 45_000 }).then(() => 'lista'),
-    menu.waitFor({ state: 'visible', timeout: 45_000 }).then(() => 'menu'),
+    menu.waitFor({ state: 'attached', timeout: 45_000 }).then(() => 'menu'),
   ]);
   if (aparecio === 'menu') {
     await mc.locator('a[title="Cambiar persona representada"]').click();
     await itemLista.first().waitFor({ state: 'visible', timeout: 30_000 });
   }
   await itemLista.last().click();
-  await menu.waitFor({ timeout: 30_000 });
+  // Con la persona elegida ARCA muestra el menú (Emitidos / Recibidos). No se espera a que esos botones
+  // estén "visibles": tienen una animación de entrada que en el Chromium de servidor no siempre termina,
+  // y de todos modos son enlaces comunes — bajarCsv va directo a la dirección de cada uno.
+  await mc.waitForURL(/setearContribuyente|menuPrincipal/, { timeout: 30_000 });
+  await mc.waitForLoadState('load');
 }
 
 // Texto corto de lo que está en pantalla, para que un error diga dónde se trabó (sin datos sensibles:
@@ -115,7 +119,14 @@ async function describirPantallas(context) {
     let ruta = p.url();
     try { const u = new URL(p.url()); ruta = `${u.hostname}${u.pathname}`; } catch { /* url no estándar */ }
     const texto = await p.locator('body').innerText({ timeout: 3_000 }).catch(() => '');
-    partes.push(`${ruta} — "${texto.replace(/\s+/g, ' ').trim().slice(0, 200)}"`);
+    // Estado de los elementos que el flujo necesita, para distinguir "no existe" de "existe pero oculto".
+    const clave = await p.evaluate(() => ['#btnEmitidos', '#btnRecibidos', '#fechaEmision', '#buscarComprobantes'].map((s) => {
+      const el = document.querySelector(s);
+      if (!el) return `${s}:no existe`;
+      const cs = getComputedStyle(el);
+      return `${s}:opacity=${cs.opacity},visibility=${cs.visibility},display=${cs.display}`;
+    }).join(' ')).catch(() => '');
+    partes.push(`${ruta} — "${texto.replace(/\s+/g, ' ').trim().slice(0, 200)}"${clave ? ` {${clave}}` : ''}`);
   }
   return partes.join(' | ');
 }
@@ -147,7 +158,9 @@ async function fijarRango(mc, periodo, esMesActual) {
 }
 
 async function bajarCsv(mc, tipo, periodo, esMesActual) {
-  await mc.locator(`#btn${tipo}`).click();
+  // Equivale a clickear "Emitidos" / "Recibidos" en el menú (son enlaces a comprobantesEmitidos.do y
+  // comprobantesRecibidos.do); la persona ya quedó elegida en la sesión de ARCA.
+  await mc.goto(new URL(`comprobantes${tipo}.do`, mc.url()).href, { waitUntil: 'load' });
   await mc.locator('#fechaEmision').waitFor();
   await fijarRango(mc, periodo, esMesActual);
   await mc.locator('#buscarComprobantes').click();
@@ -162,10 +175,8 @@ async function bajarCsv(mc, tipo, periodo, esMesActual) {
   const archivo = await descarga.path();
   const resultado = { nombreArchivo: descarga.suggestedFilename(), buffer: fs.readFileSync(archivo) };
 
-  // Tras bajar el archivo ARCA recarga sola; se vuelve al menú con la persona ya elegida.
+  // Tras bajar el archivo ARCA recarga sola: se le da un momento antes de seguir con lo próximo.
   await pausa(2500);
-  await mc.goto(new URL('menuPrincipal.do', mc.url()).href);
-  await mc.locator('#btnEmitidos').waitFor({ timeout: 30_000 });
   return resultado;
 }
 
