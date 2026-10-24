@@ -1659,3 +1659,154 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
 .proyeccion-tabla th:first-child, .proyeccion-tabla td:first-child { padding-left: 0; }
 .proy-leyenda-claro { display: inline-block; width: 14px; height: 10px; border-radius: 2px; background: var(--text-muted); opacity: 0.45; margin-right: 6px; }
 .proy-dif { margin-top: 4px; font-size: 11px; font-weight: 600; color: var(--text-muted); white-space: nowrap; text-align: right; }
+
+/* ===== Mobile / PWA ===== */
+/* La barra inferior y el panel "Más" solo existen en pantallas angostas; en escritorio manda el header. */
+.nav-movil, .nav-movil-overlay { display: none; }
+
+.banner-offline {
+  margin: 0;
+  padding: 8px 16px;
+  background: #fbf1d4;
+  border-bottom: 1px solid #ecd9a0;
+  color: #7a5a00;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Debajo de 1200px el header de escritorio (con todos los botones del rol dev) ya no entra: navegación abajo, como una app. */
+@media (max-width: 1199px) {
+  html { -webkit-text-size-adjust: 100%; scrollbar-gutter: auto; }
+  body { -webkit-tap-highlight-color: transparent; }
+
+  /* Header compacto: solo marca. La navegación pasa a la barra inferior. */
+  .app-header { padding: env(safe-area-inset-top) 0 0; }
+  .app-header-inner { padding: 10px 16px; gap: 12px; flex-wrap: nowrap; }
+  .app-header-nav-group { display: none; }
+  .app-header-marca { gap: 12px; min-width: 0; }
+  .app-logo { height: 22px; }
+  .app-header-titulo h1 { font-size: 16px; line-height: 1.2; }
+  .subtitle { margin-top: 0; font-size: 12px; }
+
+  .app-main { padding: 16px 16px calc(88px + env(safe-area-inset-bottom)); gap: 16px; }
+
+  .nav-movil {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    gap: 4px;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+  .nav-movil-item {
+    flex: 1;
+    min-width: 0;
+    min-height: 50px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .nav-movil-item span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-movil-item.active { color: var(--accent); background: var(--accent-bg); }
+
+  .nav-movil-overlay {
+    display: flex;
+    align-items: flex-end;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(24, 24, 26, 0.45);
+  }
+  .nav-movil-panel {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+  .nav-movil-panel-asa { align-self: center; width: 40px; height: 4px; margin: 4px 0 8px; border-radius: 2px; background: var(--border); }
+  .nav-movil-fila {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 48px;
+    padding: 0 12px;
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-h);
+    font-size: 15px;
+    font-weight: 600;
+    text-align: left;
+  }
+  .nav-movil-fila.active { background: var(--accent-bg); color: var(--accent); }
+  .nav-movil-pista { padding: 4px 12px; color: var(--text-muted); font-size: 13px; }
+  .nav-movil-usuario {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    padding: 12px 12px 0;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .nav-movil-usuario .btn-salir { min-height: 40px; padding: 0 16px; font-size: 14px; }
+}
+
+/* Ajustes de contenido para celular. */
+@media (max-width: 768px) {
+  /* iOS hace zoom automático al enfocar un campo con letra menor a 16px. */
+  input, select, textarea { font-size: 16px; }
+
+  /* Las tarjetas "compactas" (Proyección) se definen más abajo con 4 columnas y pisaban el 1fr de 720px. */
+  .resumen-cards.resumen-cards-compacto { grid-template-columns: 1fr; }
+
+  /* Tablas con scroll horizontal: la primera columna queda fija para no perder de qué fila se habla. */
+  .tabla-scroll table th:first-child,
+  .tabla-scroll table td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); }
+
+  /* Tablas de comparación (Consolidado, Por mes): menos aire lateral para que entren los montos sin scrollear. */
+  .tabla-comparativa { padding: 16px 14px; }
+  .tabla-comparativa table { font-size: 12px; }
+  .tabla-comparativa td, .tabla-comparativa th { padding-left: 6px; }
+  .tabla-comparativa td:first-child, .tabla-comparativa th:first-child { padding-left: 0; }
+
+  /* Proveedores: cada fila pasa a ser una tarjetita (nombre arriba, CUIT y estado abajo) en vez de tres columnas fijas. */
+  .tabla-proveedores, .tabla-proveedores tbody { display: block; }
+  .tabla-proveedores thead { display: none; }
+  .tabla-proveedores tr { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .tabla-proveedores td { display: block; padding: 0 !important; border: 0 !important; text-align: left !important; }
+  .tabla-scroll .tabla-proveedores td:first-child { position: static; background: transparent; }
+  .tabla-proveedores .col-proveedor { grid-column: 1 / -1; font-weight: 600; color: var(--text-h) !important; }
+  .tabla-proveedores .col-cuit { color: var(--text-muted); font-size: 12.5px; }
+  .tabla-proveedores .col-estado { padding-top: 4px !important; }
+  .tabla-proveedores .toggle-corresponde { display: flex; width: 100%; }
+  .tabla-proveedores .toggle-opcion { flex: 1; min-height: 40px; }
+  .tabla-proveedores td[colspan] { grid-column: 1 / -1; }
+
+  /* Desglose Neto gravado / IVA dentro de cada bloque: los montos no se parten ni se pegan entre sí. */
+  .desglose-alicuotas-tabla { font-size: 12px; }
+  .desglose-alicuotas-tabla th, .desglose-alicuotas-tabla td { padding-left: 14px; padding-right: 0; }
+  .desglose-alicuotas-tabla td:not(.col-concepto), .desglose-alicuotas-tabla th:not(.col-concepto) { white-space: nowrap; }
+  .desglose-alicuotas-tabla .col-concepto { padding-left: 0; min-width: 72px; font-size: 11.5px; }
+
+  .modal-overlay { padding: 12px; align-items: flex-end; }
+  .modal-panel { max-height: 92dvh; padding: 16px; }
+}

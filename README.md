@@ -46,6 +46,23 @@ el formato "multi-service" de `vercel.json` (lo pide su propia UI al importar el
 - Local (`npm run dev`) sigue igual: `backend/src/server.js` levanta la misma app de Express en
   `:4310` como proceso propio.
 
+## Versión mobile / PWA
+
+La app se adapta a celular y tablet y se puede instalar en la pantalla de inicio (PWA):
+
+- **Navegación**: debajo de 1200px de ancho el header de escritorio se oculta y aparece una barra
+  inferior (Inicio · Concilia · Proyección · Más). "Más" abre un panel con Cargar datos, Proveedores,
+  Configuración (según rol), el usuario y "Salir". Los permisos son los mismos que en escritorio.
+  Componente: `frontend/src/components/NavMovil.jsx`; estilos al final de `frontend/src/App.css`.
+- **Instalación**: `frontend/public/manifest.webmanifest` + íconos en `frontend/public/icons/`.
+  En Android/Chrome aparece "Instalar la app" dentro de "Más"; en iOS hay que usar Compartir →
+  "Agregar a inicio" (el panel lo recuerda).
+- **Service worker** (`frontend/public/sw.js`, solo se registra en el build de producción): guarda
+  la cáscara de la app para que abra rápido y sin conexión. **No cachea nunca `/api`** (datos fiscales
+  y token de sesión). Sin internet se muestra un aviso y las pantallas fallan con el error de red de siempre.
+  Si se cambia la lógica de caché, subir `VERSION` en `sw.js`.
+- Para probarlo: `npm run build --prefix frontend` y `npx vite preview` (en `npm run dev` no se registra).
+
 ## Pendiente para la próxima iteración
 
 - Desglose habitual/accesoria (ventas) y mercadería/gastos operativos (compras) dentro del mes en curso, vía tabla de mapeo por CUIT/proveedor.

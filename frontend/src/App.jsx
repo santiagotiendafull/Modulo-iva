@@ -14,6 +14,8 @@ import Proyeccion from './components/Proyeccion';
 import Login, { sesionGuardada, borrarSesion } from './components/Login';
 import { EvolucionSkeleton } from './components/DashboardSkeleton';
 import Spinner from './components/Spinner';
+import NavMovil from './components/NavMovil';
+import { useOnline } from './pwa';
 import { cacheGet, cacheSet } from './cache';
 import './App.css';
 
@@ -48,6 +50,7 @@ export default function App() {
   // antes de mostrar nada, en vez de ir revelando cada bloque a medida que llega — una vez lista la
   // primera carga no se vuelve a esconder, aunque después se cambie de período o razón social.
   const [cargaInicialLista, setCargaInicialLista] = useState(false);
+  const online = useOnline();
 
   const rol = sesion?.rol ?? null;
   const esDev = rol === 'dev';
@@ -55,6 +58,18 @@ export default function App() {
   function visible(clave) {
     return esDev || visibilidad[clave] !== false;
   }
+
+  // Mismas vistas y mismos permisos que el header de escritorio, para la barra inferior del celular.
+  const navPrincipal = [
+    { id: 'dashboard', etiqueta: 'Dashboard', etiquetaCorta: 'Inicio' },
+    { id: 'conciliacion', etiqueta: 'Conciliación', etiquetaCorta: 'Concilia' },
+    puedeVerCargarProveedores && { id: 'proyeccion', etiqueta: 'Proyección', etiquetaCorta: 'Proyección' },
+  ].filter(Boolean);
+  const navSecundaria = [
+    puedeVerCargarProveedores && visible('nav.cargar-datos') && { id: 'cargar-datos', etiqueta: 'Cargar datos' },
+    puedeVerCargarProveedores && visible('nav.proveedores') && { id: 'proveedores', etiqueta: 'Proveedores' },
+    esDev && { id: 'configuracion', etiqueta: 'Configuración' },
+  ].filter(Boolean);
 
   function cerrarSesion() {
     api.logout().catch(() => {});
@@ -249,6 +264,8 @@ export default function App() {
         </div>
       </header>
 
+      {!online && <p className="banner-offline" role="status">Sin conexión — los datos no se actualizan hasta que vuelva internet.</p>}
+
       <main className="app-main">
         {vista === 'cargar-datos' && puedeVerCargarProveedores ? (
           <CargarDatos onDatosActualizados={recargarTodo} visible={visible} />
@@ -315,6 +332,15 @@ export default function App() {
           </>
         )}
       </main>
+
+      <NavMovil
+        vista={vista}
+        onIr={irA}
+        principales={navPrincipal}
+        secundarias={navSecundaria}
+        usuario={sesion.username}
+        onSalir={cerrarSesion}
+      />
     </div>
   );
 }
