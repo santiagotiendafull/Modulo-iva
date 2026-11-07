@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
-import { money, fechaLabel, tipoComprobanteLabel } from '../format';
+import { money, fechaLabel, tipoComprobanteLabel, periodoLabelCompleto } from '../format';
 import InfoTooltip from './InfoTooltip';
 import ComprobantesManuales from './ComprobantesManuales';
 
@@ -25,6 +25,10 @@ function fechaHoraLabel(iso) {
 // siguiente con comprobantes nuevos (ver controlEnvioMensualService.obtenerControlMensual).
 export default function ControlMensual({ razonSocial }) {
   const [periodo, setPeriodo] = useState(periodoActual());
+  // 'mes': el checklist de un solo mes (como siempre). 'todos': los comprobantes de todos los meses
+  // juntos, para tildar de varios meses y bajar UN solo PDF separado por mes.
+  const [vista, setVista] = useState('mes');
+  const periodoConsulta = vista === 'todos' ? 'todos' : periodo;
   const [datos, setDatos] = useState(null);
   const [historial, setHistorial] = useState(null);
   const [envioIdAbierto, setEnvioIdAbierto] = useState(null);
@@ -44,13 +48,13 @@ export default function ControlMensual({ razonSocial }) {
     setCargando(true);
     setError(null);
     try {
-      setDatos(await api.controlMensual(razonSocial, periodo));
+      setDatos(await api.controlMensual(razonSocial, periodoConsulta));
     } catch (err) {
       setError(err.message);
     } finally {
       setCargando(false);
     }
-  }, [razonSocial, periodo]);
+  }, [razonSocial, periodoConsulta]);
 
   // "Ya enviados" es el historial de siempre de la razón social, no del mes elegido: se carga aparte
   // y no depende del período (ni se oculta mientras se recarga la tabla de arriba).
@@ -66,7 +70,7 @@ export default function ControlMensual({ razonSocial }) {
   useEffect(() => { cargarHistorial(); }, [cargarHistorial]);
   // Al cambiar de período o de razón social vuelve a quedar bloqueado — evita quedarse
   // desbloqueado sin darse cuenta y tildar algo de otro mes por error.
-  useEffect(() => { setBloqueado(true); }, [razonSocial, periodo]);
+  useEffect(() => { setBloqueado(true); }, [razonSocial, periodoConsulta]);
 
   async function toggleEnviado(f) {
     const nuevoValor = !f.enviado;
@@ -94,7 +98,7 @@ export default function ControlMensual({ razonSocial }) {
   async function descargarPdf() {
     setGenerandoPdf(true);
     try {
-      await api.pdfControlMensual(razonSocial, periodo);
+      await api.pdfControlMensual(razonSocial, periodoConsulta);
       await Promise.all([cargarHistorial(), cargar()]);
     } catch (err) {
       setError(err.message);
@@ -131,6 +135,21 @@ export default function ControlMensual({ razonSocial }) {
   const totalIvaMes = filas.reduce((acc, f) => acc + (f.iva || 0), 0);
   const totalIvaMarcado = filas.filter((f) => f.enviado).reduce((acc, f) => acc + (f.iva || 0), 0);
 
+  // Lo que va a entrar al próximo PDF: marcado y todavía no mandado en otro PDF. En la vista de todos
+  // los meses es lo de todos los meses juntos, y el PDF sale separado por mes.
+  const aEnviar = filas.filter((f) => f.enviado && !f.ya_enviado);
+  const mesesAEnviar = new Set(aEnviar.map((f) => f.periodo)).size;
+  const esTodos = vista === 'todos';
+
+  // Cantidades por mes de lo que se está viendo, para los encabezados de mes de la tabla.
+  const resumenPorMes = new Map();
+  for (const f of filasFiltradas) {
+    const r = resumenPorMes.get(f.periodo) ?? { total: 0, marcados: 0 };
+    r.total += 1;
+    if (f.enviado) r.marcados += 1;
+    resumenPorMes.set(f.periodo, r);
+  }
+
   return (
     <div className="control-mensual">
       <p className="nota">
@@ -141,14 +160,35 @@ export default function ControlMensual({ razonSocial }) {
         vuelven a incluir si generás otro PDF más adelante en el mismo mes — solo se manda lo nuevo
         que vayas tildando. Siempre se puede volver a destildar, no hay "cerrar el mes".
       </p>
+      <p className="nota">
+        Para mandar comprobantes de <strong>varios meses en un solo PDF</strong>, elegí "Todos los meses":
+        ves todo junto separado por mes, tildás lo que corresponda de cualquier mes y el PDF sale
+        ordenado por mes. El botón de descarga indica cuántos comprobantes (y de cuántos meses) incluye.
+      </p>
 
       <div className="control-mensual-toolbar">
-        <input
-          type="month"
-          value={periodo}
-          onChange={(e) => setPeriodo(e.target.value)}
-          aria-label="Período"
-        />
+        <div className="razon-tabs" role="radiogroup" aria-label="Qué meses ver">
+          {[['mes', 'Un mes'], ['todos', 'Todos los meses']].map(([valor, texto]) => (
+            <button
+              key={valor}
+              type="button"
+              role="radio"
+              aria-checked={vista === valor}
+              className={`razon-tab ${vista === valor ? 'active' : ''}`}
+              onClick={() => setVista(valor)}
+            >
+              {texto}
+            </button>
+          ))}
+        </div>
+        {!esTodos && (
+          <input
+            type="month"
+            value={periodo}
+            onChange={(e) => setPeriodo(e.target.value)}
+            aria-label="Período"
+          />
+        )}
         <input
           type="text"
           className="buscador-proveedores"
@@ -177,8 +217,18 @@ export default function ControlMensual({ razonSocial }) {
           <button type="button" className="btn-desglose" onClick={() => setModalManualAbierto(true)}>
             Comprobantes manuales
           </button>
-          <button type="button" className="btn-desglose" onClick={descargarPdf} disabled={generandoPdf || filas.length === 0}>
-            {generandoPdf ? 'Generando…' : 'Descargar PDF de los marcados'}
+          <button
+            type="button"
+            className="btn-desglose"
+            onClick={descargarPdf}
+            disabled={generandoPdf || aEnviar.length === 0}
+            title={aEnviar.length === 0
+              ? 'No hay comprobantes marcados para enviar'
+              : (esTodos ? 'Un solo PDF con lo marcado de todos los meses, separado por mes' : 'PDF con lo marcado de este mes')}
+          >
+            {generandoPdf
+              ? 'Generando…'
+              : `Descargar PDF de los marcados (${aEnviar.length}${esTodos && mesesAEnviar > 0 ? ` en ${mesesAEnviar} ${mesesAEnviar === 1 ? 'mes' : 'meses'}` : ''})`}
           </button>
         </div>
       </div>
@@ -189,7 +239,7 @@ export default function ControlMensual({ razonSocial }) {
         <>
           <div className="resumen-cards resumen-cards-compacto">
             <div className="card">
-              <div className="card-label">Comprobantes del mes</div>
+              <div className="card-label">{esTodos ? 'Comprobantes (todos los meses)' : 'Comprobantes del mes'}</div>
               <div className="card-value">{datos.kpis.cantidad_total}</div>
             </div>
             <div className="card">
@@ -200,7 +250,7 @@ export default function ControlMensual({ razonSocial }) {
               <div className="card-value">{datos.kpis.cantidad_enviados}</div>
             </div>
             <div className="card">
-              <div className="card-label">Monto total del mes</div>
+              <div className="card-label">{esTodos ? 'Monto total' : 'Monto total del mes'}</div>
               <div className="card-value">{money(datos.kpis.monto_total)}</div>
               <div className="card-hint">{money(totalIvaMes)} de IVA</div>
             </div>
@@ -232,26 +282,40 @@ export default function ControlMensual({ razonSocial }) {
                 </tr>
               </thead>
               <tbody>
-                {filasOrdenadas.map((f) => (
-                  <tr
-                    key={`${f.origen}-${f.id}`}
-                    className={`fila-clickeable ${bloqueado ? 'fila-bloqueada' : ''} ${f.ya_enviado ? 'fila-ya-enviada' : (f.enviado ? 'fila-seleccionada' : '')}`}
-                    onClick={() => { if (!bloqueado) toggleEnviado(f); }}
-                    title={f.ya_enviado ? 'Ya se mandó en un PDF anterior de este mes' : ''}
-                  >
-                    <td>{fechaLabel(f.fecha)}</td>
-                    <td className="col-concepto" title={f.tipo_comprobante || ''}>{tipoComprobanteLabel(f.tipo_comprobante) || '—'}</td>
-                    <td>{f.origen === 'manual' ? <span className="origen-pill origen-manual">Manual</span> : 'ARCA'}</td>
-                    <td>{f.pdv || '—'}</td>
-                    <td>{f.numero || '—'}</td>
-                    <td className="col-concepto" title={f.denominacion_contraparte || ''}>{f.denominacion_contraparte || '—'}</td>
-                    <td>{money(f.iva)}</td>
-                    <td>{money(f.total)}</td>
-                  </tr>
-                ))}
+                {filasOrdenadas.flatMap((f, i) => {
+                  const fila = (
+                    <tr
+                      key={`${f.origen}-${f.id}`}
+                      className={`fila-clickeable ${bloqueado ? 'fila-bloqueada' : ''} ${f.ya_enviado ? 'fila-ya-enviada' : (f.enviado ? 'fila-seleccionada' : '')}`}
+                      onClick={() => { if (!bloqueado) toggleEnviado(f); }}
+                      title={f.ya_enviado ? 'Ya se mandó en un PDF anterior de este mes' : ''}
+                    >
+                      <td>{fechaLabel(f.fecha)}</td>
+                      <td className="col-concepto" title={f.tipo_comprobante || ''}>{tipoComprobanteLabel(f.tipo_comprobante) || '—'}</td>
+                      <td>{f.origen === 'manual' ? <span className="origen-pill origen-manual">Manual</span> : 'ARCA'}</td>
+                      <td>{f.pdv || '—'}</td>
+                      <td>{f.numero || '—'}</td>
+                      <td className="col-concepto" title={f.denominacion_contraparte || ''}>{f.denominacion_contraparte || '—'}</td>
+                      <td>{money(f.iva)}</td>
+                      <td>{money(f.total)}</td>
+                    </tr>
+                  );
+                  // En la vista de todos los meses, un encabezado cada vez que cambia el mes.
+                  if (!esTodos || (i > 0 && filasOrdenadas[i - 1].periodo === f.periodo)) return [fila];
+                  const r = resumenPorMes.get(f.periodo);
+                  return [
+                    <tr key={`mes-${f.periodo}`} className="fila-mes">
+                      <td colSpan={8}>
+                        {periodoLabelCompleto(f.periodo)}
+                        <span className="fila-mes-detalle"> · {r.total} comprobante{r.total === 1 ? '' : 's'}{r.marcados > 0 ? ` · ${r.marcados} marcado${r.marcados === 1 ? '' : 's'}` : ''}</span>
+                      </td>
+                    </tr>,
+                    fila,
+                  ];
+                })}
                 {filasFiltradas.length === 0 && (
                   <tr><td colSpan={8} className="bloque-nota">
-                    {filas.length === 0 ? `No hay comprobantes de compra cargados para ${razonSocial} en este período.` : 'Ningún comprobante coincide con el filtro.'}
+                    {filas.length === 0 ? `No hay comprobantes de compra cargados para ${razonSocial} ${esTodos ? 'todavía' : 'en este período'}.` : 'Ningún comprobante coincide con el filtro.'}
                   </td></tr>
                 )}
               </tbody>

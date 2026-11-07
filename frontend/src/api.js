@@ -230,7 +230,7 @@ export const api = {
   }),
   pdfControlMensual: (razonSocial, periodo) => descargarConAuth(
     `/conciliacion/control-mensual/pdf?razon_social=${razonSocial}&periodo=${periodo}`,
-    `control-mensual-${razonSocial}-${periodo}.pdf`
+    `control-mensual-${razonSocial}-${periodo === 'todos' ? new Date().toISOString().slice(0, 10) : periodo}.pdf`
   ),
   // Sin período trae el historial completo de la razón social (todos los meses).
   historialControlMensual: (razonSocial, periodo) => req(`/conciliacion/control-mensual/historial?razon_social=${razonSocial}${periodo ? `&periodo=${periodo}` : ''}`),

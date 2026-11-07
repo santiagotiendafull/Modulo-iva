@@ -38,15 +38,17 @@ function limpiarNumero(v) {
 // integraron algún PDF generado antes para este período — quedan grabadas para siempre en
 // envio_control_mensual_item aunque después se destilde el "enviado". Sirve para no reincluirlos
 // en el próximo PDF (ya se mandaron en papel) y para pintarlos distinto en la pantalla.
+// `periodo` null/undefined = todos los meses. Las claves incluyen el período ("2026-10|cuit|pdv|n"):
+// un comprobante cuenta como ya enviado solo si se mandó en un PDF de SU mes.
 async function clavesYaEnviadas(razonSocial, periodo) {
   const items = await all(
-    `SELECT i.cuit_contraparte, i.pdv, i.numero
+    `SELECT e.periodo, i.cuit_contraparte, i.pdv, i.numero
      FROM envio_control_mensual_item i
      JOIN envio_control_mensual e ON e.id = i.envio_id
-     WHERE e.razon_social = ? AND e.periodo = ?`,
-    [razonSocial, periodo]
+     WHERE e.razon_social = ?${periodo ? ' AND e.periodo = ?' : ''}`,
+    periodo ? [razonSocial, periodo] : [razonSocial]
   );
-  return new Set(items.map((i) => clave(i.cuit_contraparte, i.pdv, i.numero)));
+  return new Set(items.map((i) => `${i.periodo}|${clave(i.cuit_contraparte, i.pdv, i.numero)}`));
 }
 
 // Todos los comprobantes que alguna vez integraron un PDF de Control mensual (de cualquier período),
@@ -75,21 +77,29 @@ export async function buscadorDeEnviosControlMensual(razonSocial) {
     ?? null;
 }
 
+// Valor de `periodo` para pedir todos los meses juntos (en vez de un 'YYYY-MM').
+export const TODOS_LOS_MESES = 'todos';
+
 // Todo lo que debería mandarse ese mes: comprobantes de compra ya cargados (Mis Comprobantes) más
-// los cargados a mano (peajes, combustible), unificados en una sola lista con la misma forma.
+// los cargados a mano (peajes, combustible), unificados en una sola lista con la misma forma. Con
+// periodo = TODOS_LOS_MESES trae los de todos los meses; cada fila lleva su `periodo` para poder
+// separarlas por mes.
 export async function obtenerControlMensual(razonSocial, periodo) {
   if (!['NT', 'Target'].includes(razonSocial)) throw new Error('Falta razón social (NT o Target).');
-  if (!/^\d{4}-\d{2}$/.test(periodo || '')) throw new Error('Falta período (formato YYYY-MM).');
+  const todos = periodo === TODOS_LOS_MESES;
+  if (!todos && !/^\d{4}-\d{2}$/.test(periodo || '')) throw new Error('Falta período (formato YYYY-MM).');
+  const filtroPeriodo = todos ? '' : ' AND periodo = ?';
+  const args = todos ? [razonSocial] : [razonSocial, periodo];
 
   const [comprobantesArcaCrudos, marcas, manuales, yaEnviadas] = await Promise.all([
     all(
-      `SELECT id, fecha, tipo_comprobante, pdv, numero_desde as numero, cuit_contraparte, denominacion_contraparte, iva, total
-       FROM comprobantes WHERE razon_social = ? AND periodo = ? AND tipo = 'compra'`,
-      [razonSocial, periodo]
+      `SELECT id, periodo, fecha, tipo_comprobante, pdv, numero_desde as numero, cuit_contraparte, denominacion_contraparte, iva, total
+       FROM comprobantes WHERE razon_social = ?${filtroPeriodo} AND tipo = 'compra'`,
+      args
     ),
     all('SELECT cuit_contraparte, pdv, numero, enviado FROM control_envio_mensual WHERE razon_social = ?', [razonSocial]),
-    all('SELECT * FROM comprobantes_manuales WHERE razon_social = ? AND periodo = ?', [razonSocial, periodo]),
-    clavesYaEnviadas(razonSocial, periodo),
+    all(`SELECT * FROM comprobantes_manuales WHERE razon_social = ?${filtroPeriodo}`, args),
+    clavesYaEnviadas(razonSocial, todos ? null : periodo),
   ]);
   const comprobantesArca = comprobantesArcaCrudos.map((c) => ({ ...c, pdv: limpiarNumero(c.pdv), numero: limpiarNumero(c.numero) }));
 
@@ -100,6 +110,7 @@ export async function obtenerControlMensual(razonSocial, periodo) {
   const filasArca = comprobantesArca.map((c) => ({
     origen: 'arca',
     id: c.id,
+    periodo: c.periodo,
     fecha: c.fecha,
     tipo_comprobante: c.tipo_comprobante,
     pdv: c.pdv,
@@ -109,12 +120,13 @@ export async function obtenerControlMensual(razonSocial, periodo) {
     iva: c.iva,
     total: c.total,
     enviado: marcasPorClave.get(`${c.cuit_contraparte}|${c.pdv}|${c.numero}`) ?? false,
-    ya_enviado: yaEnviadas.has(clave(c.cuit_contraparte, c.pdv, c.numero)),
+    ya_enviado: yaEnviadas.has(`${c.periodo}|${clave(c.cuit_contraparte, c.pdv, c.numero)}`),
   }));
 
   const filasManuales = manuales.map((m) => ({
     origen: 'manual',
     id: m.id,
+    periodo: m.periodo,
     fecha: m.fecha,
     tipo_comprobante: m.tipo_comprobante,
     pdv: null,
@@ -124,7 +136,7 @@ export async function obtenerControlMensual(razonSocial, periodo) {
     iva: m.iva,
     total: m.monto,
     enviado: !!m.enviado,
-    ya_enviado: yaEnviadas.has(clave(m.cuit_contraparte, null, m.numero)),
+    ya_enviado: yaEnviadas.has(`${m.periodo}|${clave(m.cuit_contraparte, null, m.numero)}`),
   }));
 
   const filas = [...filasArca, ...filasManuales].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
@@ -171,28 +183,43 @@ export async function comprobantesMarcadosParaPdf(razonSocial, periodo) {
 // comprobantes_manuales: Control mensual sigue sin "cerrar el mes", así que se puede volver a
 // descargar el PDF (con la misma selección o distinta) las veces que haga falta, y cada vez queda
 // su propio registro en el historial.
-export async function registrarEnvioControlMensual(razonSocial, periodo, usuario) {
-  const { arca, manual } = await comprobantesMarcadosParaPdf(razonSocial, periodo);
+//
+// Si el PDF junta varios meses (periodo = TODOS_LOS_MESES) se anota UN envío por mes (se generan
+// juntos, con la misma hora salvo por segundos): así "ya enviado" sigue decidiéndose mes por mes (ver
+// clavesYaEnviadas) y en el historial cada mes queda identificado. `marcadosYaCalculados` es la misma lista { arca, manual } que
+// se usó para armar el PDF, para que lo anotado sea exactamente lo que se mandó.
+export async function registrarEnvioControlMensual(razonSocial, periodo, usuario, marcadosYaCalculados) {
+  const { arca, manual } = marcadosYaCalculados ?? await comprobantesMarcadosParaPdf(razonSocial, periodo);
   const marcados = [...arca, ...manual];
   if (marcados.length === 0) return null;
 
-  const envioResult = await run(
-    'INSERT INTO envio_control_mensual (razon_social, periodo, usuario, cantidad) VALUES (?, ?, ?, ?)',
-    [razonSocial, periodo, usuario ?? null, marcados.length]
-  );
-  const envioId = Number(envioResult.lastInsertRowid);
+  const porPeriodo = new Map();
+  for (const f of marcados) {
+    if (!porPeriodo.has(f.periodo)) porPeriodo.set(f.periodo, []);
+    porPeriodo.get(f.periodo).push(f);
+  }
 
-  await db.batch(
-    marcados.map((f) => ({
-      sql: `INSERT INTO envio_control_mensual_item
-              (envio_id, origen, fecha, tipo_comprobante, pdv, numero, cuit_contraparte, denominacion_contraparte, iva, total)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [envioId, f.origen, f.fecha, f.tipo_comprobante, f.pdv, f.numero, f.cuit_contraparte, f.denominacion_contraparte, f.iva, f.total],
-    })),
-    'write'
-  );
+  const envioIds = [];
+  for (const [periodoEnvio, itemsMes] of [...porPeriodo].sort(([a], [b]) => a.localeCompare(b))) {
+    const envioResult = await run(
+      'INSERT INTO envio_control_mensual (razon_social, periodo, usuario, cantidad) VALUES (?, ?, ?, ?)',
+      [razonSocial, periodoEnvio, usuario ?? null, itemsMes.length]
+    );
+    const envioId = Number(envioResult.lastInsertRowid);
+    envioIds.push(envioId);
 
-  return { envio_id: envioId, cantidad: marcados.length };
+    await db.batch(
+      itemsMes.map((f) => ({
+        sql: `INSERT INTO envio_control_mensual_item
+                (envio_id, origen, fecha, tipo_comprobante, pdv, numero, cuit_contraparte, denominacion_contraparte, iva, total)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [envioId, f.origen, f.fecha, f.tipo_comprobante, f.pdv, f.numero, f.cuit_contraparte, f.denominacion_contraparte, f.iva, f.total],
+      })),
+      'write'
+    );
+  }
+
+  return { envio_ids: envioIds, cantidad: marcados.length };
 }
 
 // Sin período devuelve el historial completo de la razón social (todos los meses); con período, solo ese.

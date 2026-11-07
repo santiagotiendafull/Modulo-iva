@@ -36,6 +36,7 @@ import {
   registrarEnvioControlMensual,
   obtenerHistorialControlMensual,
   compararEnvio,
+  TODOS_LOS_MESES,
 } from '../services/controlEnvioMensualService.js';
 import { requireRole } from '../middleware/auth.js';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -53,6 +54,14 @@ function fechaLabel(iso) {
 function money(n) {
   if (n == null || Number.isNaN(n)) return '—';
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 }).format(n);
+}
+
+const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+// "2026-10" -> "Octubre 2026"
+function mesLargo(periodo) {
+  const [y, m] = String(periodo).split('-');
+  return MESES[Number(m) - 1] ? `${MESES[Number(m) - 1]} ${y}` : periodo;
 }
 
 // "1 - Factura A" -> "Factura A": el código AFIP adelante no hace falta en el PDF que acompaña
@@ -399,10 +408,35 @@ router.patch('/control-mensual/marcar', soloAdminODev, async (req, res) => {
 router.get('/control-mensual/pdf', soloAdminODev, async (req, res) => {
   const { razon_social: razonSocial, periodo } = req.query;
   try {
-    const { arca, manual } = await comprobantesMarcadosParaPdf(razonSocial, periodo);
+    const marcados = await comprobantesMarcadosParaPdf(razonSocial, periodo);
+    const { arca, manual } = marcados;
     // A diferencia de "Lo que pide el estudio", esto no saca nada de comprobantes/comprobantes_
     // manuales ni cambia el enviado — solo deja anotado que se generó este PDF, para el historial.
-    await registrarEnvioControlMensual(razonSocial, periodo, req.usuario?.username);
+    await registrarEnvioControlMensual(razonSocial, periodo, req.usuario?.username, marcados);
+
+    if (periodo === TODOS_LOS_MESES) {
+      // Un solo PDF con lo marcado de todos los meses, separado por mes (de más viejo a más nuevo).
+      const meses = [...new Set([...arca, ...manual].map((f) => f.periodo))].sort();
+      const secciones = [];
+      for (const mes of meses) {
+        const delMesArca = arca.filter((f) => f.periodo === mes);
+        const delMesManual = manual.filter((f) => f.periodo === mes);
+        const nombreMes = mesLargo(mes).toUpperCase();
+        if (delMesArca.length > 0) secciones.push({ titulo: `${nombreMes} — ${delMesArca.length} comprobante${delMesArca.length === 1 ? '' : 's'}`, filas: delMesArca });
+        if (delMesManual.length > 0) secciones.push({ titulo: `${nombreMes} — SE AGREGA MANUAL PORQUE NO FIGURAN EN LA LISTA DE ARCA`, filas: delMesManual });
+      }
+      renderTablaPdf(res, {
+        nombreArchivo: `control-mensual-${razonSocial}-${new Date().toISOString().slice(0, 10)}.pdf`,
+        titulo: `Control mensual — comprobantes marcados para enviar — ${razonSocial}`,
+        subtitulo: `${meses.length > 0 ? `Períodos: ${meses.map(mesLargo).join(', ')}. ` : ''}Generado el ${new Date().toLocaleDateString('es-AR')}.`,
+        cols: COLS_COMPROBANTES,
+        secciones,
+        notaVacio: 'No hay comprobantes marcados para enviar.',
+        notaTotal: (n) => `Total de comprobantes marcados: ${n}`,
+      });
+      return;
+    }
+
     renderTablaPdf(res, {
       nombreArchivo: `control-mensual-${razonSocial}-${periodo}.pdf`,
       titulo: `Control mensual — comprobantes marcados para enviar — ${razonSocial}`,

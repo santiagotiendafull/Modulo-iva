@@ -1472,6 +1472,17 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
 .control-mensual { display: flex; flex-direction: column; gap: 16px; }
 .control-mensual-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .control-mensual-toolbar .buscador-proveedores { flex: 1 1 220px; min-width: 180px; }
+/* Encabezado de mes en la vista de todos los meses de Control mensual */
+.control-mensual .tabla-conciliacion-comprobantes tbody tr.fila-mes td {
+  padding-top: 10px;
+  padding-bottom: 8px;
+  background: var(--code-bg);
+  color: var(--text-h);
+  font-weight: 700;
+  text-align: left;
+  border-top: 2px solid var(--border);
+}
+.control-mensual .fila-mes-detalle { font-weight: 500; color: var(--text-muted); }
 .control-mensual-toolbar-acciones { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; }
 .resumen-cards.resumen-cards-compacto { grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .resumen-cards.resumen-cards-compacto .card { padding: 12px 14px; }
