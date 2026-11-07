@@ -177,6 +177,17 @@ export async function comprobantesMarcadosParaPdf(razonSocial, periodo) {
   };
 }
 
+// Lo que va a salir en el próximo PDF (marcado y todavía no mandado), de TODOS los meses, contado por
+// mes. La pantalla lo muestra al lado del botón de descarga: el PDF junta lo tildado en cualquier mes,
+// así que se tiene que ver de un vistazo qué hay adentro aunque se esté mirando otro mes.
+export async function resumenLoteParaEnviar(razonSocial) {
+  const { arca, manual } = await comprobantesMarcadosParaPdf(razonSocial, TODOS_LOS_MESES);
+  const porMes = new Map();
+  for (const f of [...arca, ...manual]) porMes.set(f.periodo, (porMes.get(f.periodo) ?? 0) + 1);
+  const meses = [...porMes].sort(([a], [b]) => a.localeCompare(b)).map(([periodo, cantidad]) => ({ periodo, cantidad }));
+  return { total: arca.length + manual.length, meses };
+}
+
 // Deja anotado en envio_control_mensual/envio_control_mensual_item que se generó el PDF de este
 // período, con una copia de qué comprobantes incluyó — mismo control que ya existe en "Lo que pide
 // el estudio" para sus envíos, pero acá NO se borra ni se archiva nada de comprobantes/

@@ -25,10 +25,6 @@ function fechaHoraLabel(iso) {
 // siguiente con comprobantes nuevos (ver controlEnvioMensualService.obtenerControlMensual).
 export default function ControlMensual({ razonSocial }) {
   const [periodo, setPeriodo] = useState(periodoActual());
-  // 'mes': el checklist de un solo mes (como siempre). 'todos': los comprobantes de todos los meses
-  // juntos, para tildar de varios meses y bajar UN solo PDF separado por mes.
-  const [vista, setVista] = useState('mes');
-  const periodoConsulta = vista === 'todos' ? 'todos' : periodo;
   const [datos, setDatos] = useState(null);
   const [historial, setHistorial] = useState(null);
   const [envioIdAbierto, setEnvioIdAbierto] = useState(null);
@@ -43,18 +39,21 @@ export default function ControlMensual({ razonSocial }) {
   // etc.) tilda o destilda sin querer. Hay que desbloquear a propósito antes de poder tocar algo —
   // y vuelve a bloquearse solo al cambiar de período o de razón social, o al recargar la pantalla.
   const [bloqueado, setBloqueado] = useState(true);
+  // Lo que va a salir en el próximo PDF, de TODOS los meses: { total, meses: [{ periodo, cantidad }] }.
+  // El PDF junta lo tildado en cualquier mes, así que se muestra aparte del mes que se está mirando.
+  const [lote, setLote] = useState(null);
 
   const cargar = useCallback(async () => {
     setCargando(true);
     setError(null);
     try {
-      setDatos(await api.controlMensual(razonSocial, periodoConsulta));
+      setDatos(await api.controlMensual(razonSocial, periodo));
     } catch (err) {
       setError(err.message);
     } finally {
       setCargando(false);
     }
-  }, [razonSocial, periodoConsulta]);
+  }, [razonSocial, periodo]);
 
   // "Ya enviados" es el historial de siempre de la razón social, no del mes elegido: se carga aparte
   // y no depende del período (ni se oculta mientras se recarga la tabla de arriba).
@@ -66,11 +65,35 @@ export default function ControlMensual({ razonSocial }) {
     }
   }, [razonSocial]);
 
+  const cargarLote = useCallback(async () => {
+    try {
+      setLote(await api.loteControlMensual(razonSocial));
+    } catch (err) {
+      setError(err.message);
+    }
+  }, [razonSocial]);
+
+  // Al tildar/destildar se ajusta a mano (sin volver a pedirlo al servidor en cada click); se vuelve a
+  // pedir completo al cambiar de razón social, al descargar el PDF y al cerrar los comprobantes manuales.
+  function ajustarLote(mes, delta) {
+    setLote((prev) => {
+      if (!prev) return prev;
+      const porMes = new Map(prev.meses.map((m) => [m.periodo, m.cantidad]));
+      const nueva = (porMes.get(mes) ?? 0) + delta;
+      if (nueva > 0) porMes.set(mes, nueva); else porMes.delete(mes);
+      return {
+        total: Math.max(0, prev.total + delta),
+        meses: [...porMes].sort(([a], [b]) => a.localeCompare(b)).map(([periodo, cantidad]) => ({ periodo, cantidad })),
+      };
+    });
+  }
+
   useEffect(() => { cargar(); }, [cargar]);
   useEffect(() => { cargarHistorial(); }, [cargarHistorial]);
+  useEffect(() => { cargarLote(); }, [cargarLote]);
   // Al cambiar de período o de razón social vuelve a quedar bloqueado — evita quedarse
   // desbloqueado sin darse cuenta y tildar algo de otro mes por error.
-  useEffect(() => { setBloqueado(true); }, [razonSocial, periodoConsulta]);
+  useEffect(() => { setBloqueado(true); }, [razonSocial, periodo]);
 
   async function toggleEnviado(f) {
     const nuevoValor = !f.enviado;
@@ -83,6 +106,8 @@ export default function ControlMensual({ razonSocial }) {
         monto_enviado: prev.kpis.monto_enviado + (nuevoValor ? f.total : -f.total),
       },
     }));
+    // Lo que ya salió en un PDF anterior (verde) no cuenta para el próximo.
+    if (!f.ya_enviado) ajustarLote(f.periodo, nuevoValor ? 1 : -1);
     try {
       if (f.origen === 'manual') {
         await api.marcarEnviadoManual(f.id, nuevoValor);
@@ -92,14 +117,15 @@ export default function ControlMensual({ razonSocial }) {
     } catch (err) {
       setError(err.message);
       cargar();
+      cargarLote();
     }
   }
 
   async function descargarPdf() {
     setGenerandoPdf(true);
     try {
-      await api.pdfControlMensual(razonSocial, periodoConsulta);
-      await Promise.all([cargarHistorial(), cargar()]);
+      await api.pdfControlMensual(razonSocial);
+      await Promise.all([cargarHistorial(), cargar(), cargarLote()]);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -110,6 +136,7 @@ export default function ControlMensual({ razonSocial }) {
   function cerrarModalManual() {
     setModalManualAbierto(false);
     cargar(); // por si se cargó o borró algo mientras estaba abierto el popup
+    cargarLote();
   }
 
   const filas = datos?.filas ?? [];
@@ -135,60 +162,25 @@ export default function ControlMensual({ razonSocial }) {
   const totalIvaMes = filas.reduce((acc, f) => acc + (f.iva || 0), 0);
   const totalIvaMarcado = filas.filter((f) => f.enviado).reduce((acc, f) => acc + (f.iva || 0), 0);
 
-  // Lo que va a entrar al próximo PDF: marcado y todavía no mandado en otro PDF. En la vista de todos
-  // los meses es lo de todos los meses juntos, y el PDF sale separado por mes.
-  const aEnviar = filas.filter((f) => f.enviado && !f.ya_enviado);
-  const mesesAEnviar = new Set(aEnviar.map((f) => f.periodo)).size;
-  const esTodos = vista === 'todos';
-
-  // Cantidades por mes de lo que se está viendo, para los encabezados de mes de la tabla.
-  const resumenPorMes = new Map();
-  for (const f of filasFiltradas) {
-    const r = resumenPorMes.get(f.periodo) ?? { total: 0, marcados: 0 };
-    r.total += 1;
-    if (f.enviado) r.marcados += 1;
-    resumenPorMes.set(f.periodo, r);
-  }
-
   return (
     <div className="control-mensual">
       <p className="nota">
-        Todo lo que debería mandarse este mes: comprobantes de Mis Comprobantes (cargados en Cargar
-        Datos) más los cargados a mano, juntos. Tildá cada uno a medida que lo tenés listo para
-        mandar — queda marcado en violeta y se guarda aunque después cargues un Excel de ARCA
-        actualizado. Al descargar el PDF, esos comprobantes pasan a verde ("ya enviados") y no se
-        vuelven a incluir si generás otro PDF más adelante en el mismo mes — solo se manda lo nuevo
-        que vayas tildando. Siempre se puede volver a destildar, no hay "cerrar el mes".
-      </p>
-      <p className="nota">
-        Para mandar comprobantes de <strong>varios meses en un solo PDF</strong>, elegí "Todos los meses":
-        ves todo junto separado por mes, tildás lo que corresponda de cualquier mes y el PDF sale
-        ordenado por mes. El botón de descarga indica cuántos comprobantes (y de cuántos meses) incluye.
+        Todo lo que debería mandarse: comprobantes de Mis Comprobantes (cargados en Cargar Datos) más
+        los cargados a mano, mes por mes. Elegí el mes y tildá cada comprobante a medida que lo tenés
+        listo para mandar — queda marcado en violeta y se guarda aunque después cargues un Excel de
+        ARCA actualizado. <strong>Lo que tildes en cualquier mes se suma al mismo PDF</strong>: al
+        descargarlo sale todo junto, separado por mes, y esos comprobantes pasan a verde ("ya
+        enviados") para no repetirse en el próximo. Siempre se puede volver a destildar, no hay "cerrar
+        el mes".
       </p>
 
       <div className="control-mensual-toolbar">
-        <div className="razon-tabs" role="radiogroup" aria-label="Qué meses ver">
-          {[['mes', 'Un mes'], ['todos', 'Todos los meses']].map(([valor, texto]) => (
-            <button
-              key={valor}
-              type="button"
-              role="radio"
-              aria-checked={vista === valor}
-              className={`razon-tab ${vista === valor ? 'active' : ''}`}
-              onClick={() => setVista(valor)}
-            >
-              {texto}
-            </button>
-          ))}
-        </div>
-        {!esTodos && (
-          <input
-            type="month"
-            value={periodo}
-            onChange={(e) => setPeriodo(e.target.value)}
-            aria-label="Período"
-          />
-        )}
+        <input
+          type="month"
+          value={periodo}
+          onChange={(e) => setPeriodo(e.target.value)}
+          aria-label="Período"
+        />
         <input
           type="text"
           className="buscador-proveedores"
@@ -221,16 +213,35 @@ export default function ControlMensual({ razonSocial }) {
             type="button"
             className="btn-desglose"
             onClick={descargarPdf}
-            disabled={generandoPdf || aEnviar.length === 0}
-            title={aEnviar.length === 0
-              ? 'No hay comprobantes marcados para enviar'
-              : (esTodos ? 'Un solo PDF con lo marcado de todos los meses, separado por mes' : 'PDF con lo marcado de este mes')}
+            disabled={generandoPdf || !lote || lote.total === 0}
+            title={lote && lote.total > 0 ? 'Un solo PDF con lo marcado de todos los meses, separado por mes' : 'No hay comprobantes marcados para enviar'}
           >
             {generandoPdf
               ? 'Generando…'
-              : `Descargar PDF de los marcados (${aEnviar.length}${esTodos && mesesAEnviar > 0 ? ` en ${mesesAEnviar} ${mesesAEnviar === 1 ? 'mes' : 'meses'}` : ''})`}
+              : `Descargar PDF de los marcados (${lote?.total ?? 0}${lote && lote.meses.length > 1 ? ` en ${lote.meses.length} meses` : ''})`}
           </button>
         </div>
+      </div>
+
+      {/* Qué hay en el próximo PDF, mes por mes: se ve aunque se esté mirando otro mes, así un tilde
+          olvidado en un mes viejo no sale en el PDF sin que se note. Tocar un mes lleva a ese mes. */}
+      <div className="lote-envio">
+        <span className="lote-envio-titulo">En el próximo PDF:</span>
+        {!lote || lote.total === 0 ? (
+          <span className="lote-envio-vacio">todavía no hay comprobantes tildados para enviar</span>
+        ) : (
+          lote.meses.map((m) => (
+            <button
+              key={m.periodo}
+              type="button"
+              className={`lote-envio-mes ${m.periodo === periodo ? 'actual' : ''}`}
+              onClick={() => setPeriodo(m.periodo)}
+              title={`Ver ${periodoLabelCompleto(m.periodo)}`}
+            >
+              {periodoLabelCompleto(m.periodo)} <strong>{m.cantidad}</strong>
+            </button>
+          ))
+        )}
       </div>
 
       {error && <p className="error-banner">{error}</p>}
@@ -239,7 +250,7 @@ export default function ControlMensual({ razonSocial }) {
         <>
           <div className="resumen-cards resumen-cards-compacto">
             <div className="card">
-              <div className="card-label">{esTodos ? 'Comprobantes (todos los meses)' : 'Comprobantes del mes'}</div>
+              <div className="card-label">Comprobantes del mes</div>
               <div className="card-value">{datos.kpis.cantidad_total}</div>
             </div>
             <div className="card">
@@ -250,7 +261,7 @@ export default function ControlMensual({ razonSocial }) {
               <div className="card-value">{datos.kpis.cantidad_enviados}</div>
             </div>
             <div className="card">
-              <div className="card-label">{esTodos ? 'Monto total' : 'Monto total del mes'}</div>
+              <div className="card-label">Monto total del mes</div>
               <div className="card-value">{money(datos.kpis.monto_total)}</div>
               <div className="card-hint">{money(totalIvaMes)} de IVA</div>
             </div>
@@ -282,40 +293,26 @@ export default function ControlMensual({ razonSocial }) {
                 </tr>
               </thead>
               <tbody>
-                {filasOrdenadas.flatMap((f, i) => {
-                  const fila = (
-                    <tr
-                      key={`${f.origen}-${f.id}`}
-                      className={`fila-clickeable ${bloqueado ? 'fila-bloqueada' : ''} ${f.ya_enviado ? 'fila-ya-enviada' : (f.enviado ? 'fila-seleccionada' : '')}`}
-                      onClick={() => { if (!bloqueado) toggleEnviado(f); }}
-                      title={f.ya_enviado ? 'Ya se mandó en un PDF anterior de este mes' : ''}
-                    >
-                      <td>{fechaLabel(f.fecha)}</td>
-                      <td className="col-concepto" title={f.tipo_comprobante || ''}>{tipoComprobanteLabel(f.tipo_comprobante) || '—'}</td>
-                      <td>{f.origen === 'manual' ? <span className="origen-pill origen-manual">Manual</span> : 'ARCA'}</td>
-                      <td>{f.pdv || '—'}</td>
-                      <td>{f.numero || '—'}</td>
-                      <td className="col-concepto" title={f.denominacion_contraparte || ''}>{f.denominacion_contraparte || '—'}</td>
-                      <td>{money(f.iva)}</td>
-                      <td>{money(f.total)}</td>
-                    </tr>
-                  );
-                  // En la vista de todos los meses, un encabezado cada vez que cambia el mes.
-                  if (!esTodos || (i > 0 && filasOrdenadas[i - 1].periodo === f.periodo)) return [fila];
-                  const r = resumenPorMes.get(f.periodo);
-                  return [
-                    <tr key={`mes-${f.periodo}`} className="fila-mes">
-                      <td colSpan={8}>
-                        {periodoLabelCompleto(f.periodo)}
-                        <span className="fila-mes-detalle"> · {r.total} comprobante{r.total === 1 ? '' : 's'}{r.marcados > 0 ? ` · ${r.marcados} marcado${r.marcados === 1 ? '' : 's'}` : ''}</span>
-                      </td>
-                    </tr>,
-                    fila,
-                  ];
-                })}
+                {filasOrdenadas.map((f) => (
+                  <tr
+                    key={`${f.origen}-${f.id}`}
+                    className={`fila-clickeable ${bloqueado ? 'fila-bloqueada' : ''} ${f.ya_enviado ? 'fila-ya-enviada' : (f.enviado ? 'fila-seleccionada' : '')}`}
+                    onClick={() => { if (!bloqueado) toggleEnviado(f); }}
+                    title={f.ya_enviado ? 'Ya se mandó en un PDF anterior de este mes' : ''}
+                  >
+                    <td>{fechaLabel(f.fecha)}</td>
+                    <td className="col-concepto" title={f.tipo_comprobante || ''}>{tipoComprobanteLabel(f.tipo_comprobante) || '—'}</td>
+                    <td>{f.origen === 'manual' ? <span className="origen-pill origen-manual">Manual</span> : 'ARCA'}</td>
+                    <td>{f.pdv || '—'}</td>
+                    <td>{f.numero || '—'}</td>
+                    <td className="col-concepto" title={f.denominacion_contraparte || ''}>{f.denominacion_contraparte || '—'}</td>
+                    <td>{money(f.iva)}</td>
+                    <td>{money(f.total)}</td>
+                  </tr>
+                ))}
                 {filasFiltradas.length === 0 && (
                   <tr><td colSpan={8} className="bloque-nota">
-                    {filas.length === 0 ? `No hay comprobantes de compra cargados para ${razonSocial} ${esTodos ? 'todavía' : 'en este período'}.` : 'Ningún comprobante coincide con el filtro.'}
+                    {filas.length === 0 ? `No hay comprobantes de compra cargados para ${razonSocial} en este período.` : 'Ningún comprobante coincide con el filtro.'}
                   </td></tr>
                 )}
               </tbody>

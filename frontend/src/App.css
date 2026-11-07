@@ -1472,17 +1472,24 @@ tr.fila-proveedor-nueva td { color: var(--text-h); }
 .control-mensual { display: flex; flex-direction: column; gap: 16px; }
 .control-mensual-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .control-mensual-toolbar .buscador-proveedores { flex: 1 1 220px; min-width: 180px; }
-/* Encabezado de mes en la vista de todos los meses de Control mensual */
-.control-mensual .tabla-conciliacion-comprobantes tbody tr.fila-mes td {
-  padding-top: 10px;
-  padding-bottom: 8px;
-  background: var(--code-bg);
-  color: var(--text-h);
-  font-weight: 700;
-  text-align: left;
-  border-top: 2px solid var(--border);
+/* Qué hay en el próximo PDF (todos los meses), mes por mes */
+.lote-envio { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.lote-envio-titulo { font-weight: 600; color: var(--text-h); }
+.lote-envio-vacio { color: var(--text-muted); }
+.lote-envio-mes {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
 }
-.control-mensual .fila-mes-detalle { font-weight: 500; color: var(--text-muted); }
+.lote-envio-mes strong { color: var(--text-h); }
+.lote-envio-mes:hover { border-color: var(--accent-border); background: var(--accent-bg); }
+.lote-envio-mes.actual { border-color: var(--accent); background: var(--accent-bg); }
 .control-mensual-toolbar-acciones { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; }
 .resumen-cards.resumen-cards-compacto { grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .resumen-cards.resumen-cards-compacto .card { padding: 12px 14px; }

@@ -228,9 +228,12 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ razon_social: razonSocial, cuit_contraparte: cuitContraparte, pdv, numero, enviado }),
   }),
-  pdfControlMensual: (razonSocial, periodo) => descargarConAuth(
-    `/conciliacion/control-mensual/pdf?razon_social=${razonSocial}&periodo=${periodo}`,
-    `control-mensual-${razonSocial}-${periodo === 'todos' ? new Date().toISOString().slice(0, 10) : periodo}.pdf`
+  // Qué hay en el próximo PDF (marcado y todavía no enviado, de todos los meses), contado por mes.
+  loteControlMensual: (razonSocial) => req(`/conciliacion/control-mensual/lote?razon_social=${razonSocial}`),
+  // El PDF junta lo marcado de TODOS los meses, separado por mes.
+  pdfControlMensual: (razonSocial) => descargarConAuth(
+    `/conciliacion/control-mensual/pdf?razon_social=${razonSocial}&periodo=todos`,
+    `control-mensual-${razonSocial}-${new Date().toISOString().slice(0, 10)}.pdf`
   ),
   // Sin período trae el historial completo de la razón social (todos los meses).
   historialControlMensual: (razonSocial, periodo) => req(`/conciliacion/control-mensual/historial?razon_social=${razonSocial}${periodo ? `&periodo=${periodo}` : ''}`),

@@ -34,6 +34,7 @@ import {
   marcarEnviadoArca,
   comprobantesMarcadosParaPdf,
   registrarEnvioControlMensual,
+  resumenLoteParaEnviar,
   obtenerHistorialControlMensual,
   compararEnvio,
   TODOS_LOS_MESES,
@@ -400,6 +401,16 @@ router.patch('/control-mensual/marcar', soloAdminODev, async (req, res) => {
   try {
     await marcarEnviadoArca(razonSocial, cuit, pdv, numero, !!enviado);
     res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Qué hay en el próximo PDF (marcado y no enviado, todos los meses juntos), contado por mes.
+router.get('/control-mensual/lote', soloAdminODev, async (req, res) => {
+  const { razon_social: razonSocial } = req.query;
+  try {
+    res.json(await resumenLoteParaEnviar(razonSocial));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
